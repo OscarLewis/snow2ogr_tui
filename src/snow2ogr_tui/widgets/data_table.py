@@ -13,10 +13,21 @@ from textual import work
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Center, Container, Middle, Vertical
+from textual.message import Message
 from textual.widgets import LoadingIndicator, Static
 from textual_fastdatatable import DataTable
 
 COLUMNS = ("Table Name", "Creation Date")
+
+
+# Add this message class near the top of your file, after imports
+class TablesLoaded(Message):
+    """Posted when table data has been successfully loaded."""
+
+    def __init__(self, table_data: list[tuple[str, datetime | None]]) -> None:
+        """Initialize the message/event with the loaded table data."""
+        self.table_data = table_data
+        super().__init__()
 
 
 class VimStyleTable(DataTable):
@@ -155,12 +166,15 @@ class VimDataTable(Container):
 
             table.focus()
 
+            # Post message that data has been loaded
+            self.post_message(TablesLoaded(tables))
+
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
         """Log the selected row's data on Enter or click."""
         row_index = event.cursor_row
         if 0 <= row_index < len(self.table_data):
             name, created = self.table_data[row_index]
-            logger.debug(
+            logger.info(
                 f"Row selected: index={row_index} name={name!r} created={created}",
             )
         else:
@@ -178,7 +192,7 @@ def list_tables(
     patterns = [like] if isinstance(like, str) else list(like or [])
 
     sql = (
-        f"SELECT TABLE_NAME, CREATED FROM {safe_database}.INFORMATION_SCHEMA.TABLES "  # noqa: S608
+        f"SELECT TABLE_NAME, CREATED FROM {safe_database}.INFORMATION_SCHEMA.TABLES "  # noqa: S608 - We check and quote it manually
         "WHERE TABLE_SCHEMA = %s"
     )
     params = [schema]

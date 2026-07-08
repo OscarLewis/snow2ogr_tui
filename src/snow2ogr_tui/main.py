@@ -10,6 +10,7 @@ from textual.binding import Binding
 from textual.widgets import Footer
 
 from snow2ogr_tui.widgets import AppHeader, HelpScreen, VimDataTable
+from snow2ogr_tui.widgets.data_table import TablesLoaded
 
 # Remove loguru's default stderr sink (avoids fighting with Textual's terminal control)
 logger.remove()
@@ -38,7 +39,7 @@ class TuiApp(App):
         Binding("d", "toggle_dark", description="Toggle Dark Mode"),
         Binding("ctrl+q", "quit", "Quit"),
         Binding("question_mark", "toggle_help", "Help"),
-        # Binding("f", "toggle_table_filter", "Toggle Filter (NDM/Geo)", show=False),
+        Binding("f", "toggle_table_filter", "Toggle Filter (NDM/Geo)"),
     ]
 
     def compose(self) -> ComposeResult:
@@ -48,6 +49,15 @@ class TuiApp(App):
         # https://textual.textualize.io/widgets/loading_indicator/
         yield VimDataTable(cursor_type="row")
         yield Footer()
+
+    def on_tables_loaded(self, message: TablesLoaded) -> None:
+        """Handle when tables are loaded."""
+        logger.info(f"Tables loaded: {len(message.table_data)} tables")
+
+    def action_toggle_table_filter(self) -> None:
+        """Toggle the table filter."""
+        # Implement your filter toggle logic here
+        logger.info("Filter toggled")
 
     def action_toggle_dark(self) -> None:
         """Toggle dark mode."""
