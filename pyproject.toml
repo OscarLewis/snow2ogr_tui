@@ -1,0 +1,45 @@
+[project]
+name = "snow2ogr-tui"
+version = "0.1.0"
+description = "A Textual app to access Geometry stored in Snowflake."
+readme = "README.md"
+authors = [{ name = "Oscar Lewis", email = "oscar@apple.com" }]
+requires-python = ">=3.13"
+dependencies = [
+    "asyncio>=4.0.0",
+    "geoarrow-pyarrow>=0.2.0",
+    "loguru>=0.7.3",
+    "platformdirs>=4.10.0",
+    "pyarrow>=24.0.0",
+    "pyogrio>=0.13.0",
+    "snowflake-connector-python[aio,pandas,secure-local-storage]>=4.6.0",
+    "textual>=8.2.8",
+    "textual-dev>=1.8.0",
+    "textual-fastdatatable>=0.12.0",
+]
+
+[project.scripts]
+snow2ogr-tui = "snow2ogr_tui:main"
+
+[build-system]
+requires = ["uv_build>=0.9.5,<0.10.0"]
+build-backend = "uv_build"
+
+[[tool.uv.index]]
+name = "apple"
+url = "https://pypi.apple.com/simple"
+default = true
+
+[tool.ruff]
+# Keep reporting unused imports, but never auto-delete them
+unfixable = ["F401"]
+# Allow lines to be as long as 120.
+line-length = 120
+
+[tool.ruff.lint]
+ignore = [
+    "ANN003", # missing-type-kwargs
+    "TD002",  # missing-todo-author
+    "TD003",  # missing-todo-link
+    "FIX002", # line-contains-todo
+]
