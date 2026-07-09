@@ -4,9 +4,13 @@ import asyncio
 from datetime import datetime
 from typing import Any, ClassVar, Literal
 
-import snowflake.connector
+import adbc_driver_snowflake.dbapi
+from adbc_driver_manager.dbapi import (
+    DatabaseError,
+    OperationalError,
+    ProgrammingError,
+)
 from loguru import logger
-from snowflake.connector.errors import DatabaseError, OperationalError, ProgrammingError
 from textual import work
 from textual.app import ComposeResult
 from textual.binding import Binding
@@ -114,14 +118,16 @@ class VimDataTable(Container):
         tables: list[tuple[str, datetime | None]] = []
         try:
             conn = await asyncio.to_thread(
-                snowflake.connector.connect,
-                account="ist-acdp01",
-                user="oscar_lewis@apple.com",
-                authenticator="externalbrowser",
-                database="MAPS_DATA_SEMANTIC_DB",
-                schema="TERRITORY_APP",
-                warehouse="MAPS_DATA_TERRITORIES_ADHOC_VWH",
-                role="MAPS_DATA_CPMA_TEAM_ROLE",
+                adbc_driver_snowflake.dbapi.connect,
+                db_kwargs={
+                    "adbc.snowflake.sql.account": "ist-acdp01",
+                    "username": "oscar_lewis@apple.com",
+                    "adbc.snowflake.sql.auth_type": "auth_ext_browser",
+                    "adbc.snowflake.sql.db": "MAPS_DATA_SEMANTIC_DB",
+                    "adbc.snowflake.sql.schema": "TERRITORY_APP",
+                    "adbc.snowflake.sql.warehouse": "MAPS_DATA_TERRITORIES_ADHOC_VWH",
+                    "adbc.snowflake.sql.role": "MAPS_DATA_CPMA_TEAM_ROLE",
+                },
             )
             tables = await asyncio.to_thread(
                 list_tables,
@@ -129,17 +135,16 @@ class VimDataTable(Container):
                 "MAPS_DATA_SEMANTIC_DB",
                 "TERRITORY_APP",
             )
-        except OperationalError as oe:
-            # Network drops, timeout errors, or Snowflake endpoints unreachable
-            logger.error(f"Network or Connection Error: {oe.msg} (Code: {oe.errno})")
-            # Optional: update a TUI banner to show "Offline/Network issue"
-        except ProgrammingError as pe:
-            # SQL compilation errors, bad permissioning, or missing database objects
-            logger.error(f"SQL or Permission Error: {pe.msg} (SQLState: {pe.sqlstate})")
-            # Optional: notify user via TUI that they lack role permissions
-        except DatabaseError as de:
-            # Catch-all for other underlying Snowflake-specific backend exceptions
-            logger.error(f"Snowflake Database Error: {de.msg}")
+        except OperationalError:
+            logger.exception("Failed to connect to Snowflake.")
+        except ProgrammingError:
+            logger.exception(
+                "Snowflake reported a SQL error while listing tables.",
+            )
+        except DatabaseError:
+            logger.exception(
+                "Snowflake returned a database error while listing tables.",
+            )
         finally:
             if conn is not None:
                 await asyncio.to_thread(conn.close)
