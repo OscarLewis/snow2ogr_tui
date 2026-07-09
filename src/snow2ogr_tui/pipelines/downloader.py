@@ -15,7 +15,6 @@ import adbc_driver_snowflake.dbapi
 import polars as pl
 import polars_st as st
 import polars_st.typing
-import returns
 from shapely import wkb as shapely_wkb
 from shapely.errors import ShapelyError
 from sqlalchemy import MetaData, Table, column, func, literal_column, select
