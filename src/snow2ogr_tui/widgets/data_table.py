@@ -23,6 +23,7 @@ from textual_fastdatatable import DataTable
 
 from snow2ogr_tui.pipelines.group_tables import group_territory_tables, preprocess_table_metadata
 from snow2ogr_tui.pipelines.list_tables import list_tables
+from snow2ogr_tui.widgets.downloader_screen import DownloaderScreen
 
 COLUMNS = ("Table Name", "Creation Date")
 
@@ -337,12 +338,11 @@ class VimDataTable(Container):
                 .row(0)[0]
             )
 
-            self.notify(
-                message=msg
-                + (f"Primary Geometry Source: {geom_source_primary}" if geom_source_primary is not None else ""),
-                title="Selected",
+            self.app.push_screen(
+                DownloaderScreen(
+                    row["territory_table_primary"],
+                ),
             )
-
         else:
             logger.warning(f"Invalid row index: {row_index}")
 

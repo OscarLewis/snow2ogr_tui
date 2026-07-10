@@ -7,7 +7,7 @@ from loguru import logger
 from platformdirs import user_log_dir  # pip install platformdirs
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.widgets import Footer
+from textual.widgets import Footer, Static, TabbedContent, TabPane
 
 from snow2ogr_tui.widgets import AppHeader, HelpScreen, VimDataTable
 from snow2ogr_tui.widgets.data_table import FilterToggled, TablesLoaded
@@ -35,6 +35,21 @@ class TuiApp(App):
 
     ENABLE_COMMAND_PALETTE = False  # This may change later if I have better ideas for the palette.
 
+    DEFAULT_CSS = """
+    #main-tabs {
+        height: 1fr;
+    }
+
+    TabbedContent > TabPane {
+        height: 100%;
+    }
+
+    #downloader-placeholder {
+        padding: 0 2;
+        text-style: italic;
+    }
+    """
+
     BINDINGS: ClassVar[list[Binding]] = [
         Binding("d", "toggle_dark", description="Toggle Dark Mode"),
         Binding("ctrl+q", "quit", "Quit"),
@@ -45,9 +60,14 @@ class TuiApp(App):
     def compose(self) -> ComposeResult:
         """Create child widgets for the app."""
         yield AppHeader("snow2ogr")
-        # TODO: Actually load the data from snowflake here, show a message and a LoadingIndicator
-        # https://textual.textualize.io/widgets/loading_indicator/
-        yield VimDataTable(cursor_type="row", id="vim-data-table")
+
+        with TabbedContent(id="main-tabs"):
+            with TabPane("Snowflake Tables", id="data-table-tab"):
+                yield VimDataTable(cursor_type="row", id="vim-data-table")  # ✅ Direct mount
+
+            with TabPane("Downloads", id="downloads-tab"):
+                yield Static("Downloads Tab Placeholder (WIP).", id="downloader-placeholder")  # ✅ Direct mount
+
         yield Footer()
 
     def on_tables_loaded(self, message: TablesLoaded) -> None:
