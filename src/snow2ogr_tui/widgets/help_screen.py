@@ -11,14 +11,12 @@ from textual.widgets import Markdown
 
 HELP_TEXT = """\
 # Help
-
 ## Keybindings
 - `^q` — Quit
 - `?` — Toggle this help screen
 - `d` — Toggle dark mode
 - `f` - Toggle the filter to show/hide the Name, Geometry_Data, and NDM_Data tables.
 - `h/j/k/l` or `←/↑/↓/→` - Navigate the cursor
-
 ## Tips
 - Press `Escape` to close this popup.
 """

@@ -4,10 +4,15 @@ from typing import ClassVar
 
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.containers import Container, Vertical
+from textual.containers import Center, Container, Vertical
 from textual.events import Click
+from textual.message import Message
 from textual.screen import ModalScreen
-from textual.widgets import ProgressBar, Static
+from textual.widgets import Button, ProgressBar, Static
+
+
+class DownloadButtonPressed(Message):
+    """Posted when the download button is pressed."""
 
 
 class DownloaderScreen(ModalScreen):
@@ -63,6 +68,11 @@ class DownloaderScreen(ModalScreen):
         margin: 1 0;
     }
 
+    #start-download-button {
+        width: 20%;
+        margin-top: 1;
+    }
+
     #footer {
         margin-top: 1;
         color: $text-muted;
@@ -94,10 +104,23 @@ class DownloaderScreen(ModalScreen):
 
             yield Static("", id="current-step")
 
+            with Center():
+                yield Button(
+                    "Start Download",
+                    id="start-download-button",
+                    variant="primary",
+                    flat=True,
+                )
+
             yield Static(
                 "Press Esc to close",
                 id="footer",
             )
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        """Handle button presses."""
+        if event.button.id == "start-download-button":
+            self.post_message(DownloadButtonPressed())
 
     def action_close(self) -> None:
         """Close the downloader screen."""

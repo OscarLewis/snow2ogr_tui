@@ -5,12 +5,14 @@ from typing import ClassVar
 
 from loguru import logger
 from platformdirs import user_log_dir  # pip install platformdirs
+from textual import on
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.widgets import TabbedContent, TabPane
 
-from snow2ogr_tui.widgets import AppHeader, DataTableTab, DownloadsTab
-from snow2ogr_tui.widgets.data_table import TablesLoaded
+from snow2ogr_tui.widgets import AppHeader, DataTableTab, DownloadsTab, VimDataTable
+from snow2ogr_tui.widgets.data_table import TablesLoaded, VimStyleTable
+from snow2ogr_tui.widgets.downloader_screen import DownloadButtonPressed
 from snow2ogr_tui.widgets.help_screen import HelpScreen
 
 # Remove loguru's default stderr sink (avoids fighting with Textual's terminal control)
@@ -49,6 +51,8 @@ class TuiApp(App):
     BINDINGS: ClassVar[list[Binding]] = [
         # Global bindings - tab-specific bindings are defined in each tab class
         Binding("ctrl+q", "quit", "Quit"),
+        Binding("d", "toggle_dark", "Toggle Dark Mode"),
+        Binding("question_mark", "toggle_help", "Help"),
     ]
 
     def compose(self) -> ComposeResult:
@@ -66,27 +70,21 @@ class TuiApp(App):
         """Handle when tables are loaded."""
         logger.info(f"Tables loaded: {len(message.table_data)} tables")
 
-    # def action_toggle_table_filter(self) -> None:
-    #     """Toggle the table filter."""
-    #     # Implement your filter toggle logic here
-    #     logger.info("Filter toggled")
-    #     # Get the VimDataTable widget
-    #     vim_data_table = self.query_one("#vim-data-table", VimDataTable)
+    def action_toggle_dark(self) -> None:
+        """Toggle dark mode."""
+        self.theme = "textual-dark" if self.theme == "textual-light" else "textual-light"
 
-    #     # Send the FilterToggled message to it
-    #     vim_data_table.post_message(FilterToggled())
+    def on_download_button_pressed(self, message: DownloadButtonPressed) -> None:
+        """Handle when the download button is pressed for a given table set."""
+        logger.info("Download button clicked")
 
-    # def action_toggle_dark(self) -> None:
-    #     """Toggle dark mode."""
-    #     self.theme = "textual-dark" if self.theme == "textual-light" else "textual-light"
-
-    # def action_toggle_help(self) -> None:
-    #     """Toggle Help Screen visability."""
-    #     # If help is already open, close it; otherwise open it
-    #     if isinstance(self.screen, HelpScreen):
-    #         self.pop_screen()
-    #     else:
-    #         self.push_screen(HelpScreen())
+    def action_toggle_help(self) -> None:
+        """Toggle Help Screen visability."""
+        # If help is already open, close it; otherwise open it
+        if isinstance(self.screen, HelpScreen):
+            self.pop_screen()
+        else:
+            self.push_screen(HelpScreen())
 
 
 def main() -> None:
