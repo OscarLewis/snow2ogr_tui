@@ -10,7 +10,7 @@ from textual.binding import Binding
 from textual.widgets import Footer
 
 from snow2ogr_tui.widgets import AppHeader, HelpScreen, VimDataTable
-from snow2ogr_tui.widgets.data_table import TablesLoaded
+from snow2ogr_tui.widgets.data_table import FilterToggled, TablesLoaded
 
 # Remove loguru's default stderr sink (avoids fighting with Textual's terminal control)
 logger.remove()
@@ -38,8 +38,8 @@ class TuiApp(App):
     BINDINGS: ClassVar[list[Binding]] = [
         Binding("d", "toggle_dark", description="Toggle Dark Mode"),
         Binding("ctrl+q", "quit", "Quit"),
+        Binding("f", "toggle_table_filter", "Toggle Filter"),
         Binding("question_mark", "toggle_help", "Help"),
-        Binding("f", "toggle_table_filter", "Toggle Filter (NDM/Geo)"),
     ]
 
     def compose(self) -> ComposeResult:
@@ -47,7 +47,7 @@ class TuiApp(App):
         yield AppHeader("snow2ogr")
         # TODO: Actually load the data from snowflake here, show a message and a LoadingIndicator
         # https://textual.textualize.io/widgets/loading_indicator/
-        yield VimDataTable(cursor_type="row")
+        yield VimDataTable(cursor_type="row", id="vim-data-table")
         yield Footer()
 
     def on_tables_loaded(self, message: TablesLoaded) -> None:
@@ -58,6 +58,11 @@ class TuiApp(App):
         """Toggle the table filter."""
         # Implement your filter toggle logic here
         logger.info("Filter toggled")
+        # Get the VimDataTable widget
+        vim_data_table = self.query_one("#vim-data-table", VimDataTable)
+
+        # Send the FilterToggled message to it
+        vim_data_table.post_message(FilterToggled())
 
     def action_toggle_dark(self) -> None:
         """Toggle dark mode."""
@@ -75,6 +80,7 @@ class TuiApp(App):
 def main() -> None:
     """Run Application."""
     app = TuiApp()
+    logger.debug("Starting Snow2OGR TUI Application.")
     app.run()
 
 

@@ -11,3 +11,5 @@ wheels/
 
 # CSVs
 *.csv
+
+.DS_STORE
