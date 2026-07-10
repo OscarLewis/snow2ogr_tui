@@ -86,6 +86,7 @@ class VimDataTable(Container):
         layer: base;
         height: 1;
         dock: top;
+        width: auto;
         padding: 0 1;
     }
     VimDataTable VimStyleTable {
@@ -344,3 +345,7 @@ class VimDataTable(Container):
 
         else:
             logger.warning(f"Invalid row index: {row_index}")
+
+
+# TODO: With each line when the filter is on NDM/GEO (default value) include some sort of unicode icon in
+# the rows in which Geometry, Name, and NDM are all present along with Territory.
