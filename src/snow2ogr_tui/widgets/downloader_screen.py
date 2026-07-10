@@ -69,8 +69,12 @@ class DownloaderScreen(ModalScreen):
     }
 
     #start-download-button {
-        width: 20%;
+        width: auto;
         margin-top: 1;
+    }
+
+    #start-download-button.-style-default:focus {
+        text-style: bold !important;
     }
 
     #footer {
@@ -109,7 +113,6 @@ class DownloaderScreen(ModalScreen):
                     "Start Download",
                     id="start-download-button",
                     variant="primary",
-                    flat=True,
                 )
 
             yield Static(
