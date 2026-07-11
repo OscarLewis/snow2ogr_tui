@@ -340,7 +340,8 @@ class VimDataTable(Container):
 
             self.app.push_screen(
                 DownloaderScreen(
-                    row["territory_table_primary"],
+                    row["Group Key"],
+                    self.table_pl_grouped.filter(pl.col("Group Key") == row["Group Key"]),
                 ),
             )
         else:
