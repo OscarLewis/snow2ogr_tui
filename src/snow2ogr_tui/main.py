@@ -76,7 +76,7 @@ class TuiApp(App):
 
     def on_download_button_pressed(self, message: DownloadButtonPressed) -> None:
         """Handle when the download button is pressed for a given table set."""
-        logger.info("Download button clicked")
+        logger.info(f"Download button clicked for table set {message.table_set}")
 
     def action_toggle_help(self) -> None:
         """Toggle Help Screen visability."""

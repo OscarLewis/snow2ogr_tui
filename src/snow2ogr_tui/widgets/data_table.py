@@ -21,6 +21,7 @@ from textual.message import Message
 from textual.widgets import LoadingIndicator, Static
 from textual_fastdatatable import DataTable
 
+from snow2ogr_tui.common.models import TableSet
 from snow2ogr_tui.pipelines.group_tables import group_territory_tables, preprocess_table_metadata
 from snow2ogr_tui.pipelines.list_tables import list_tables
 from snow2ogr_tui.widgets.downloader_screen import DownloaderScreen
@@ -46,8 +47,9 @@ class TablesLoaded(Message):
 
     def __init__(self, table_data: list[tuple[str, datetime | None]]) -> None:
         """Initialize the message/event with the loaded table data."""
-        self.table_data = table_data
         super().__init__()
+
+        self.table_data = table_data
 
 
 class FilterToggled(Message):
@@ -170,6 +172,8 @@ class VimDataTable(Container):
                     "adbc.snowflake.sql.role": "MAPS_DATA_CPMA_TEAM_ROLE",
                 },
             )
+            self.schema = "TERRITORY_APP"
+            self.database = "MAPS_DATA_SEMANTIC_DB"
             tables = await asyncio.to_thread(
                 list_tables,
                 conn,
@@ -330,18 +334,24 @@ class VimDataTable(Container):
                 f"territory_table_creation_date={row['territory_table_creation_date']}",
             )
 
-            msg = f"Group Key: {row['Group Key']!r}\n"
+            # msg = f"Group Key: {row['Group Key']!r}\n"
+            filtered = self.table_pl_grouped.filter(pl.col("Group Key") == row["Group Key"])
 
-            geom_source_primary: str = (
-                self.table_pl_grouped.filter(pl.col("Group Key") == row["Group Key"])
-                .select("geometry_source_primary")
-                .row(0)[0]
-            )
+            if len(filtered) > 1:
+                msg = "table_pl_grouped[Group Key] must contain at most 1 row"
+                raise ValueError(msg)
+
+            territory_table: str | None = filtered["territory_table_primary"].item()
+            geometry_primary: str | None = filtered["geometry_source_primary"].item()
+            ndm_table: str | None = filtered["ndm_source"].list.first()[0]
+            name_table: str | None = filtered["name"].list.first()[0]
+
+            tables_set = TableSet(territory_table, geometry_primary, ndm_table, name_table)
 
             self.app.push_screen(
                 DownloaderScreen(
                     row["Group Key"],
-                    self.table_pl_grouped.filter(pl.col("Group Key") == row["Group Key"]),
+                    tables_set,
                 ),
             )
         else:

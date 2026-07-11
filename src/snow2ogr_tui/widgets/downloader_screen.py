@@ -11,9 +11,17 @@ from textual.message import Message
 from textual.screen import ModalScreen
 from textual.widgets import Button, ProgressBar, Static
 
+from snow2ogr_tui.common.models import TableSet
+
 
 class DownloadButtonPressed(Message):
     """Posted when the download button is pressed."""
+
+    def __init__(self, table_set: TableSet) -> None:
+        """Initialize the message/event with the loaded table data."""
+        super().__init__()
+
+        self.table_set = table_set
 
 
 class DownloaderScreen(ModalScreen):
@@ -86,15 +94,16 @@ class DownloaderScreen(ModalScreen):
     }
     """
 
-    def __init__(self, group_key: str, group_info: pl.DataFrame) -> None:
+    def __init__(self, group_key: str, table_set: TableSet) -> None:
         """Initialize the downloader screen."""
         super().__init__()
-        self.table_name = group_info.select(pl.col("territory_table_primary")).item()
-        self.group_info = group_info
-        self.gorup_key = group_key
-        self.geometry_primary: str | None = self.group_info["geometry_source_primary"].item()
-        self.ndm_table: str | None = self.group_info["ndm_source"].list.first()[0]
-        self.name_table: str | None = self.group_info["name"].list.first()[0]
+
+        self.Territory_Table = table_set.Territory_Table
+        self.Geometry_Table = table_set.Geometry_Table
+        self.NDM_Table = table_set.NDM_Table
+        self.Names_Table = table_set.Name_Table
+        self.table_set = table_set
+        self.group = group_key
 
     def compose(self) -> ComposeResult:
         """Compose the downloader screen."""
@@ -102,13 +111,13 @@ class DownloaderScreen(ModalScreen):
             yield Static("Downloader", id="title")
 
             yield Static("Selected Table Set", classes="heading")
-            yield Static(f"{self.table_name}", id="selected-table")
-            if self.geometry_primary:
-                yield Static(f"[bold]Geometry Table[/bold]: {self.geometry_primary}", markup=True)
-            if self.ndm_table:
-                yield Static(f"[bold]NDM Source Tabls[/bold]: {self.ndm_table}", markup=True)
-            if self.name_table:
-                yield Static(f"[bold]Name Source Tabls[/bold]: {self.name_table}", markup=True)
+            yield Static(f"{self.Territory_Table}", id="selected-table")
+            if self.Geometry_Table:
+                yield Static(f"[bold]Geometry Table[/bold]: {self.Geometry_Table}", markup=True)
+            if self.NDM_Table:
+                yield Static(f"[bold]NDM Source Tabls[/bold]: {self.NDM_Table}", markup=True)
+            if self.Names_Table:
+                yield Static(f"[bold]Name Source Tabls[/bold]: {self.Names_Table}", markup=True)
 
             yield Static("Status", classes="heading")
             yield Static("Waiting to start...", id="status")
@@ -136,7 +145,7 @@ class DownloaderScreen(ModalScreen):
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle button presses."""
         if event.button.id == "start-download-button":
-            self.post_message(DownloadButtonPressed())
+            self.post_message(DownloadButtonPressed(self.table_set))
 
     def action_close(self) -> None:
         """Close the downloader screen."""
