@@ -63,7 +63,7 @@ class TuiApp(App):
         # Global bindings - tab-specific bindings are defined in each tab class
         Binding("ctrl+q", "quit", "Quit"),
         Binding("d", "toggle_dark", "Toggle Dark Mode"),
-        Binding("i", "toggle_login", "Login"),
+        Binding("i", "toggle_login", "Login", show=False),
         Binding("question_mark", "toggle_help", "Help"),
     ]
 
@@ -87,7 +87,7 @@ class TuiApp(App):
         logger.info(f"Tables loaded: {len(message.table_data)} tables")
 
     def on_snowflake_connected(self, message: SnowflakeConnected) -> None:
-        """"""
+        """Store the Snowflake connection and fetch data."""
         self.sf_conn = message.connection
         logger.info("Connection to Snowflake established.")
         self.query_one(DataTableTab).query_one(VimDataTable).fetch_data()

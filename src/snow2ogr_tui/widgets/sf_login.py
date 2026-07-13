@@ -81,6 +81,12 @@ class SnowflakeConnected(Message):
     """Posted when a Snowflake connection has been established."""
 
     def __init__(self, connection: Connection) -> None:
+        """Initialize the message with the established Snowflake connection.
+
+        Args:
+            connection: The active Snowflake Connection object.
+
+        """
         super().__init__()
         self.connection = connection
 
@@ -127,7 +133,6 @@ class SFLoginScreen(ModalScreen):
         Binding("escape", "dismiss_login", "Close help"),
         Binding("d", "toggle_dark", "Toggle Dark Mode"),
         Binding("ctrl+q", "quit", "Quit"),
-        Binding("u", "fake_login", "Debug Login"),
     ]
 
     def __init__(
@@ -246,10 +251,6 @@ class SFLoginScreen(ModalScreen):
     def action_toggle_dark(self) -> None:
         """Delegate toggle dark mode to the app."""
         self.app.action_toggle_dark()
-
-    def action_fake_login(self) -> None:
-        """Mark the login as successful for debugging purposes."""
-        self.logged_in = True
 
     def watch_spinner_index(self, _: int) -> None:
         """Refresh the login status text whenever the spinner advances."""

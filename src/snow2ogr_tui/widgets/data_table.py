@@ -256,7 +256,7 @@ class VimDataTable(Container):
             # Post message that data has been loaded
             self.post_message(TablesLoaded(tables))
 
-    def on_filter_toggled(self, message: FilterToggled) -> None:
+    def on_filter_toggled(self, message: FilterToggled) -> None:  # noqa: ARG002 - I know we don't touch the message content
         """Handle filter toggle message and refresh the table."""
         # Cycle through filters: None -> NDMGEO -> None
         if self.current_filter is None:
@@ -337,7 +337,6 @@ class VimDataTable(Container):
                 f"Row selected: index={row_index} Row group key={row['Group Key']} ",
             )
 
-            # msg = f"Group Key: {row['Group Key']!r}\n"
             filtered = self.table_pl_grouped.filter(pl.col("Group Key") == row["Group Key"])
 
             if len(filtered) > 1:
