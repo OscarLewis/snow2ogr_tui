@@ -3,15 +3,15 @@
 import asyncio
 from datetime import datetime
 from enum import Enum
-from typing import Any, ClassVar, Literal
+from typing import TYPE_CHECKING, Any, ClassVar, Literal, cast
 
-import adbc_driver_snowflake.dbapi
 import polars as pl
 from adbc_driver_manager.dbapi import (
     DatabaseError,
     OperationalError,
     ProgrammingError,
 )
+from adbc_driver_snowflake.dbapi import Connection
 from loguru import logger
 from textual import work
 from textual.app import ComposeResult
@@ -25,6 +25,10 @@ from snow2ogr_tui.common.models import TableSet
 from snow2ogr_tui.pipelines.group_tables import group_territory_tables, preprocess_table_metadata
 from snow2ogr_tui.pipelines.list_tables import list_tables
 from snow2ogr_tui.widgets.downloader_screen import DownloaderScreen
+
+if TYPE_CHECKING:
+    from snow2ogr_tui.main import TuiApp
+
 
 COLUMNS = ("Table Name", "Creation Date")
 
@@ -115,6 +119,20 @@ class VimDataTable(Container):
         self.cursor_type = cursor_type
         self.current_filter: FilterType | None = FilterType.NDMGEO  # Track current filter state
 
+    @property
+    def tui_app(self) -> "TuiApp":
+        """Return the parent TuiApp instance for this widget.
+
+        This casts self.app to the concrete TuiApp type so callers get proper
+        typing information when accessing application-level attributes.
+        """
+        return cast("TuiApp", self.app)
+
+    @property
+    def sf_connection(self) -> Connection | None:
+        """Return the application's current Snowflake connection."""
+        return self.tui_app.sf_conn
+
     def compose(self) -> ComposeResult:
         """Create the layout with data table and loading indicator."""
         # Add filter indicator at the top
@@ -151,27 +169,18 @@ class VimDataTable(Container):
             yield indicator
 
     def on_mount(self) -> None:
-        """Set up the table and start fetching data."""
-        self.fetch_data()
+        """Set up the table."""
 
     @work(exclusive=True)
     async def fetch_data(self) -> None:
         """Fetch remote data and populate the table."""
-        conn = None
         tables: list[tuple[str, datetime | None]] = []
+        conn = self.sf_connection
+        if conn is None:
+            logger.warning("No active Snowflake connection.")
+            return
         try:
-            conn = await asyncio.to_thread(
-                adbc_driver_snowflake.dbapi.connect,
-                db_kwargs={
-                    "adbc.snowflake.sql.account": "ist-acdp01",
-                    "username": "oscar_lewis@apple.com",
-                    "adbc.snowflake.sql.auth_type": "auth_ext_browser",
-                    "adbc.snowflake.sql.db": "MAPS_DATA_SEMANTIC_DB",
-                    "adbc.snowflake.sql.schema": "TERRITORY_APP",
-                    "adbc.snowflake.sql.warehouse": "MAPS_DATA_TERRITORIES_ADHOC_VWH",
-                    "adbc.snowflake.sql.role": "MAPS_DATA_CPMA_TEAM_ROLE",
-                },
-            )
+            logger.debug("Attempting to list tables in Snowflake")
             self.schema = "TERRITORY_APP"
             self.database = "MAPS_DATA_SEMANTIC_DB"
             tables = await asyncio.to_thread(
@@ -191,9 +200,6 @@ class VimDataTable(Container):
                 "Snowflake returned a database error while listing tables.",
             )
         finally:
-            if conn is not None:
-                await asyncio.to_thread(conn.close)
-
             # Hide loading indicator and populate table
             loading_overlay = self.query_one("#loading-overlay")
             loading_overlay.display = False
@@ -328,10 +334,7 @@ class VimDataTable(Container):
             row = self.current_table.row(row_index, named=True)
 
             logger.info(
-                f"Row selected: index={row_index} "
-                f"Row group key={row['Group Key']} "
-                f"territory_table_primary={row['territory_table_primary']!r} "
-                f"territory_table_creation_date={row['territory_table_creation_date']}",
+                f"Row selected: index={row_index} Row group key={row['Group Key']} ",
             )
 
             # msg = f"Group Key: {row['Group Key']!r}\n"
@@ -346,7 +349,7 @@ class VimDataTable(Container):
             ndm_table: str | None = filtered["ndm_source"].list.first()[0]
             name_table: str | None = filtered["name"].list.first()[0]
 
-            tables_set = TableSet(territory_table, geometry_primary, ndm_table, name_table)
+            tables_set = TableSet(row["Group Key"], territory_table, geometry_primary, ndm_table, name_table)
 
             self.app.push_screen(
                 DownloaderScreen(

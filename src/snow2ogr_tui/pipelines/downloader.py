@@ -15,6 +15,7 @@ import adbc_driver_snowflake.dbapi
 import polars as pl
 import polars_st as st
 import polars_st.typing
+from loguru import logger
 from shapely import wkb as shapely_wkb
 from shapely.errors import ShapelyError
 from sqlalchemy import MetaData, Table, column, func, literal_column, select
@@ -356,7 +357,7 @@ def prepare_spatial_table(
     )
 
     if geom_res is None or geom_res.COLUMN in ("REPRESENTATIVE_POINT", "REP_POINT"):
-        print(f"No geometry detected in '{table_name}'.")
+        logger.debug(f"No geometry detected in '{table_name}'.")
         return (
             fetch_table_to_polars(
                 conn,
@@ -367,13 +368,13 @@ def prepare_spatial_table(
             None,
         )
 
-    print(geom_res.to_dict())
+    logger.debug(geom_res.to_dict())
 
     #
     # Snowflake GEOGRAPHY
     #
     if geom_res.TYPE == GeometryType.SNOWFLAKE_GEOGRAPHY:
-        print(
+        logger.debug(
             "Fetching geography as WKB from Snowflake before creating a Polars DataFrame...",
         )
 
@@ -406,7 +407,7 @@ def prepare_spatial_table(
     # Geometry already readable by Polars
     #
     if geom_res.SOURCE == GeometrySource.POLARS:
-        print(
+        logger.debug(
             "Safe to fetch the entire table into a Polars DataFrame before converting WKB.",
         )
 
@@ -452,7 +453,7 @@ def fetch_table_set(
 
     # Fetch the territory table.
     if geometry_table:
-        print("Geometry table provided, skipping scan of territory table.")
+        logger.debug("Geometry table provided, skipping scan of territory table.")
         # Skip geometry detection since geometry will come from the separate table.
         result = fetch_table_to_polars(
             conn,
@@ -472,7 +473,7 @@ def fetch_table_set(
 
     # Join names.
     if name_table:
-        print("Name table provided, joining aggregrate array to result.")
+        logger.debug("Name table provided, joining aggregrate array to result.")
         names = build_names_array(
             fetch_table_to_polars(
                 conn,
@@ -510,7 +511,7 @@ def fetch_table_set(
 
     # Join NDM table.
     if ndm_table:
-        print("NDM table provided, joining table to result.")
+        logger.debug("NDM table provided, joining table to result.")
         ndm = fetch_table_to_polars(
             conn,
             database,
@@ -538,7 +539,7 @@ def fetch_table_set(
             geometry_name="geometry",
         )
 
-    print(f"Result table shape: {result.shape}")
+    logger.debug(f"Result table shape: {result.shape}")
 
     return result, bool(geometry_column)
 
@@ -694,4 +695,4 @@ def write_geopackage(
         out_path.unlink()
 
     gdf.st.write_file(out_path.as_posix(), geometry_name="geom")
-    print(f"Wrote geopackage to `{out_path}`.")
+    logger.debug(f"Wrote geopackage to `{out_path}`.")

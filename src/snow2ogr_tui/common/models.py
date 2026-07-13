@@ -7,6 +7,7 @@ from dataclasses import dataclass
 class TableSet:
     """Data class for storing table references."""
 
+    Group_Key: str | None = None
     Territory_Table: str | None = None
     Geometry_Table: str | None = None
     NDM_Table: str | None = None
