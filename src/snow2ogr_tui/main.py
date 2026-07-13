@@ -52,8 +52,6 @@ class TuiApp(App):
     }
     """
 
-    # TODO: Formalize Log-In process with Snowflake here instead of in the datatable
-
     # DB Set Up
     DB_Path = Path("snow2ogr.db")
     engine, sessionlocal = init_db(DB_Path, reset=False, echo=False)
@@ -80,6 +78,7 @@ class TuiApp(App):
 
     def on_mount(self) -> None:
         """Show login screen on startup."""
+        # This SFLoginScreen starts logging into Snowflake on mount and will reply with a SnowflakeConnected message.
         self.push_screen(SFLoginScreen())
 
     def on_tables_loaded(self, message: TablesLoaded) -> None:
