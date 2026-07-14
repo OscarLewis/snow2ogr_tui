@@ -20,6 +20,10 @@ from shapely import wkb as shapely_wkb
 from shapely.errors import ShapelyError
 from sqlalchemy import MetaData, Table, column, func, literal_column, select
 
+from snow2ogr_tui.common.models import ExportDownloadStatus
+
+StatusCallback = Callable[[ExportDownloadStatus], None]
+
 
 def get_table_columns_with_types(
     conn: adbc_driver_snowflake.dbapi.Connection,
@@ -443,17 +447,28 @@ def fetch_table_set(
     geometry_table: str | None = None,
     name_table: str | None = None,
     ndm_table: str | None = None,
+    status_callback: StatusCallback | None = None,
 ) -> tuple[pl.DataFrame | st.GeoDataFrame, bool]:
     """Fetch a territory dataset and optionally join names, geometry, and NDM.
 
     Returns a GeoDataFrame if any input table contains geometry.
     """
     if territory_table is None:
-        raise ValueError("territory_table is required.")
+        msg = "territory_table is required."
+        raise ValueError(msg)
+
+    def update(status: ExportDownloadStatus) -> None:
+        if status_callback is not None:
+            status_callback(status)
+
+    update(ExportDownloadStatus.FETCHING_TABLES)
 
     # Fetch the territory table.
+
     if geometry_table:
         logger.debug("Geometry table provided, skipping scan of territory table.")
+        update(ExportDownloadStatus.FETCHING_TERRITORY)
+
         # Skip geometry detection since geometry will come from the separate table.
         result = fetch_table_to_polars(
             conn,
@@ -464,6 +479,7 @@ def fetch_table_set(
         geometry_column = None
     else:
         # Territory table may contain geometry.
+        update(ExportDownloadStatus.FETCHING_TERRITORY)
         result, geometry_column = prepare_spatial_table(
             conn,
             database,
@@ -473,6 +489,7 @@ def fetch_table_set(
 
     # Join names.
     if name_table:
+        update(ExportDownloadStatus.FETCHING_NAMES)
         logger.debug("Name table provided, joining aggregrate array to result.")
         names = build_names_array(
             fetch_table_to_polars(
@@ -491,6 +508,7 @@ def fetch_table_set(
 
     # Join separate geometry table if provided.
     if geometry_table:
+        update(ExportDownloadStatus.FETCHING_GEOMETRY)
         geometry, geom_column = prepare_spatial_table(
             conn,
             database,
@@ -498,6 +516,7 @@ def fetch_table_set(
             geometry_table,
         )
 
+        update(ExportDownloadStatus.JOINING_TABLES)
         result = result.join(
             geometry,
             on="FEATURE_ID",
@@ -511,6 +530,7 @@ def fetch_table_set(
 
     # Join NDM table.
     if ndm_table:
+        update(ExportDownloadStatus.FETCHING_NDM)
         logger.debug("NDM table provided, joining table to result.")
         ndm = fetch_table_to_polars(
             conn,
@@ -528,6 +548,7 @@ def fetch_table_set(
 
     # Convert to a GeoDataFrame if geometry exists.
     if geometry_column is not None:
+        update(ExportDownloadStatus.CONVERTING_GEOMETRY)
         if "geometry" in result.columns and geometry_column != "geometry":
             result = result.rename({"geometry": "previous_geometry"})
 
@@ -538,9 +559,9 @@ def fetch_table_set(
             result,
             geometry_name="geometry",
         )
-
+    update(ExportDownloadStatus.JOINING_TABLES)
     logger.debug(f"Result table shape: {result.shape}")
-
+    update(ExportDownloadStatus.FINALIZING)
     return result, bool(geometry_column)
 
 

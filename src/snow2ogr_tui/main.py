@@ -1,21 +1,24 @@
 """Main function for creating a TUI App."""
 
 from pathlib import Path
-from typing import ClassVar
+from typing import ClassVar, cast
 
 from adbc_driver_snowflake.dbapi import Connection
 from loguru import logger
 from platformdirs import user_log_dir
+from rich.text import Text
 from textual import work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.widgets import TabbedContent, TabPane
+from textual.widgets import Static, TabbedContent, TabPane
 
 from snow2ogr_tui.common import TableSet
+from snow2ogr_tui.common.models import ExportDownloadStatus
 from snow2ogr_tui.database import Exports, ExportStatus, init_db
+from snow2ogr_tui.pipelines.export_manager import ExportDownloadStatusChanged, ExportManager
 from snow2ogr_tui.widgets import AppHeader, DataTableTab, DownloadsTab, VimDataTable
 from snow2ogr_tui.widgets.data_table import TablesLoaded
-from snow2ogr_tui.widgets.downloader_screen import DownloadButtonPressed
+from snow2ogr_tui.widgets.downloader_screen import DownloadButtonPressed, DownloaderScreen
 from snow2ogr_tui.widgets.help_screen import HelpScreen
 from snow2ogr_tui.widgets.sf_login import SFLoginScreen, SnowflakeConnected
 
@@ -56,6 +59,7 @@ class TuiApp(App):
     DB_Path = Path("snow2ogr.db")
     engine, sessionlocal = init_db(DB_Path, reset=False, echo=False)
     sf_conn: Connection | None = None
+    export_manager = ExportManager(dom_id="export-manager")
 
     BINDINGS: ClassVar[list[Binding]] = [
         # Global bindings - tab-specific bindings are defined in each tab class
@@ -67,8 +71,9 @@ class TuiApp(App):
 
     def compose(self) -> ComposeResult:
         """Create child widgets for the app."""
+        # First thing is to add the invisible ExportManager that lives in the background of all things
+        yield self.export_manager
         yield AppHeader("snow2ogr")
-
         with TabbedContent(id="main-tabs"):
             with TabPane("Snowflake Tables", id="data-table-tab"):
                 yield DataTableTab()
@@ -86,7 +91,7 @@ class TuiApp(App):
         logger.info(f"Tables loaded: {len(message.table_data)} tables")
 
     def on_snowflake_connected(self, message: SnowflakeConnected) -> None:
-        """Store the Snowflake connection and fetch data."""
+        """Store the Snowflake connection and fetch data once loaded."""
         self.sf_conn = message.connection
         logger.info("Connection to Snowflake established.")
         self.query_one(DataTableTab).query_one(VimDataTable).fetch_data()
@@ -102,7 +107,7 @@ class TuiApp(App):
     def on_download_button_pressed(self, message: DownloadButtonPressed) -> None:
         """Handle when the download button is pressed for a given table set."""
         logger.info(f"Download button clicked for table set {message.table_set}")
-        self.data_analyst_worker(message.table_set)
+        self.export_manager.register_download(table_set=message.table_set)
 
     def action_toggle_help(self) -> None:
         """Toggle Help Screen visability."""
@@ -112,20 +117,32 @@ class TuiApp(App):
         else:
             self.push_screen(HelpScreen())
 
-    @work()
-    async def data_analyst_worker(self, table_set: TableSet) -> None:
-        """Primary Data Worker, gets assigned to download a specific table set."""
-        new_export_record = Exports(
-            group_key=table_set.Group_Key,
-            primary_table_name=table_set.Territory_Table,
-            geography_table=table_set.Geometry_Table,
-            name_table=table_set.Name_Table,
-            ndm_table=table_set.NDM_Table,
-            status=ExportStatus.UNKNOWN,
-        )
-        with self.sessionlocal() as session:
-            session.add(new_export_record)
-            session.commit()
+    def on_export_download_status_changed(
+        self,
+        event: ExportDownloadStatusChanged,
+    ) -> None:
+        """Handle export status change notifications from workers."""
+        progress = self.export_manager.export_workers[event.worker_id]
+        logger.debug(f"Export Status Change message recieved for {progress.worker_id} - Group Key {event.group_key}")
+        seen_group_keys = []
+        # Search the screen stack
+        for screen in self.screen_stack:
+            if isinstance(screen, DownloaderScreen):
+                seen_group_keys.append(screen.group_key)
+                if screen.group_key == event.group_key:
+                    current_step = screen.query_one("#current-step", Static)
+                    if progress.status == ExportDownloadStatus.COMPLETE:
+                        current_step.update(
+                            Text.assemble(
+                                str(progress.status),
+                                " to ",
+                                Text(progress.export_path.as_posix(), style="italic"),
+                            ),
+                        )
+                    else:
+                        current_step.update(Text.assemble(str(progress.status), Text("...")))
+                    logger.debug(f"Updated screen for {event.group_key}")
+        logger.debug(f"Group Keys with open screens: {seen_group_keys}")
 
 
 def main() -> None:

@@ -66,8 +66,9 @@ class FilterToggled(Message):
             filter_type: The filter to apply (FilterType.NDMGEO or None for no filter).
 
         """
-        self.filter_type = filter_type
         super().__init__()
+
+        self.filter_type = filter_type
 
 
 class VimStyleTable(DataTable):

@@ -1,6 +1,6 @@
 """Downloads Tab with download-specific bindings."""
 
-from typing import ClassVar
+from typing import TYPE_CHECKING, ClassVar, cast
 
 from loguru import logger
 from textual.app import ComposeResult
@@ -9,6 +9,9 @@ from textual.containers import Container
 from textual.widgets import Footer, Static
 
 from snow2ogr_tui.widgets.help_screen import HelpScreen
+
+if TYPE_CHECKING:
+    from snow2ogr_tui.main import TuiApp
 
 
 class DownloadsTab(Container):
@@ -34,9 +37,19 @@ class DownloadsTab(Container):
     }
     """
 
+    @property
+    def tui_app(self) -> "TuiApp":
+        """Return the parent TuiApp instance for this widget.
+
+        This casts self.app to the concrete TuiApp type so callers get proper
+        typing information when accessing application-level attributes.
+        """
+        return cast("TuiApp", self.app)
+
     def compose(self) -> ComposeResult:
         """Compose the tab."""
         yield Static("Downloads Tab Placeholder (WIP).", id="downloader-placeholder")
+        yield Static(id="session-downloads")
         yield Footer()
 
     def action_clear_downloads(self) -> None:

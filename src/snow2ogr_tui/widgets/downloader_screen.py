@@ -66,12 +66,8 @@ class DownloaderScreen(ModalScreen):
         margin-top: 1;
     }
 
-    #status {
-        color: $text;
-    }
-
     #current-step {
-        color: $text-muted;
+        color: $text;
     }
 
     ProgressBar {
@@ -93,6 +89,7 @@ class DownloaderScreen(ModalScreen):
         content-align: center middle;
     }
     """
+    group_key: str
 
     def __init__(self, group_key: str, table_set: TableSet) -> None:
         """Initialize the downloader screen."""
@@ -103,7 +100,7 @@ class DownloaderScreen(ModalScreen):
         self.NDM_Table = table_set.NDM_Table
         self.Names_Table = table_set.Name_Table
         self.table_set = table_set
-        self.group = group_key
+        self.group_key = group_key
 
     def compose(self) -> ComposeResult:
         """Compose the downloader screen."""
@@ -120,15 +117,13 @@ class DownloaderScreen(ModalScreen):
                 yield Static(f"[bold]Name Source Tabls[/bold]: {self.Names_Table}", markup=True)
 
             yield Static("Status", classes="heading")
-            yield Static("Waiting to start...", id="status")
+            yield Static("Waiting to start...", id="current-step")
 
             yield ProgressBar(
                 id="download-progress",
                 total=100,
                 show_eta=True,
             )
-
-            yield Static("", id="current-step")
 
             with Center():
                 yield Button(
