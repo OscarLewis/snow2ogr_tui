@@ -111,9 +111,9 @@ class DownloaderScreen(ModalScreen):
             if self.Geometry_Table:
                 yield Static(f"[bold]Geometry Table[/bold]: {self.Geometry_Table}", markup=True)
             if self.NDM_Table:
-                yield Static(f"[bold]NDM Source Tabls[/bold]: {self.NDM_Table}", markup=True)
+                yield Static(f"[bold]NDM Source Tables[/bold]: {self.NDM_Table}", markup=True)
             if self.Names_Table:
-                yield Static(f"[bold]Name Source Tabls[/bold]: {self.Names_Table}", markup=True)
+                yield Static(f"[bold]Name Source Tables[/bold]: {self.Names_Table}", markup=True)
 
             yield Static("Status", classes="heading")
             yield Static("Waiting to start...", id="current-step")
