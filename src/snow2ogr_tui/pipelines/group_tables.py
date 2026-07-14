@@ -1,5 +1,7 @@
 """Pipeline functions for grouping Snowflake table metadata."""
 
+import uuid
+
 import polars as pl
 
 DATE_PATTERN = r"(\d{8})"
@@ -37,21 +39,20 @@ def preprocess_table_metadata(df: pl.DataFrame) -> pl.DataFrame:
         .alias("Table Type"),
     )
 
-    # Take the max of Creation Date by Group Key to add as a suffix in order to ensure distinct keys
-    df = df.with_columns(
-        pl.col("Creation Date").max().over("Group Key").dt.strftime("%Y%m%d%H%M%S").alias("_group_timestamp"),
+    # Generate one UUID per unique Group Key so that each Group Key will be unique once persisted to a database
+    unique_groups = df.select("Group Key").unique()
+    group_uuids = {row["Group Key"]: str(uuid.uuid4()) for row in unique_groups.iter_rows(named=True)}
+    # Map the UUID to each row
+    uuid_df = pl.DataFrame(
+        {
+            "Group Key": list(group_uuids.keys()),
+            "_uuid": list(group_uuids.values()),
+        },
     )
-
-    # Append the timestamp to the Group Key
-    return df.with_columns(
-        pl.concat_str(
-            [
-                pl.col("Group Key"),
-                pl.lit("_"),
-                pl.col("_group_timestamp"),
-            ],
-        ).alias("Group Key"),
-    ).drop("_group_timestamp")
+    df = df.join(uuid_df, on="Group Key").with_columns(
+        (pl.col("Group Key") + "_" + pl.col("_uuid")).alias("Group Key"),
+    )
+    return df.drop("_uuid")
 
 
 def group_territory_tables(df: pl.DataFrame) -> pl.DataFrame:

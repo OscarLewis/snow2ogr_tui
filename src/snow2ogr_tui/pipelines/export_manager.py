@@ -1,6 +1,7 @@
 """Export Manager for Snow2OGR."""
 
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
@@ -13,7 +14,7 @@ from textual.worker import Worker
 
 from snow2ogr_tui.common import TableSet
 from snow2ogr_tui.common.models import ExportDownloadStatus, GeospatialOutputFormat
-from snow2ogr_tui.database import Exports, ExportStatus
+from snow2ogr_tui.database import Exports, ExportStatus, QueryPerformance
 from snow2ogr_tui.pipelines.downloader import fetch_table_set, write_geopackage
 
 if TYPE_CHECKING:
@@ -149,6 +150,15 @@ class ExportManager(Widget):
         if table_set.Territory_Table is None:
             msg = "Territory_Table is required."
             raise ValueError(msg)
+        with self.sessionlocal() as session:
+            export_record = session.query(Exports).filter(Exports.group_key == table_set.Group_Key).first()
+            if export_record is None:
+                msg = f"No export records found in SQL filter for group key {table_set.Group_Key}"
+                " when there should be at least one result"
+                raise ValueError(msg)
+            export_record.fetch_timestamp = datetime.now(UTC)
+            session.commit()
+
         self.schema = "TERRITORY_APP"
         self.database = "MAPS_DATA_SEMANTIC_DB"
         logger.debug(f"Exporting {table_set.Group_Key} file to {export_path} in format {export_format}.")
@@ -158,7 +168,7 @@ class ExportManager(Widget):
             raise RuntimeError(msg_0)
         try:
             self._set_worker_status(worker_id, ExportDownloadStatus.FETCHING_TABLES)
-            df, _is_spatial = fetch_table_set(
+            df, is_spatial = fetch_table_set(
                 self.tui_app.sf_conn,
                 database=self.database,
                 schema=self.schema,
@@ -168,9 +178,22 @@ class ExportManager(Widget):
                 ndm_table=table_set.NDM_Table,
                 status_callback=lambda status: self._set_worker_status(worker_id, status),
             )
-            self._set_worker_status(worker_id, ExportDownloadStatus.EXPORTING_FILE)
-            write_geopackage(df, out_file_path)
-            self._set_worker_status(worker_id, ExportDownloadStatus.COMPLETE)
         except Exception:
             self._set_worker_status(worker_id, ExportDownloadStatus.FAILED)
             raise
+        else:
+            self._set_worker_status(worker_id, ExportDownloadStatus.EXPORTING_FILE)
+            write_geopackage(df, out_file_path)
+            with self.sessionlocal() as session:
+                export_record = session.query(Exports).filter_by(group_key=table_set.Group_Key).first()
+                if export_record is None:
+                    msg = f"Expected an export record for group key {table_set.Group_Key!r}, but none was found."
+                    raise ValueError(msg)
+                export_record.export_timestamp = datetime.now(UTC)
+                export_ts = export_record.export_timestamp.replace(tzinfo=UTC)
+                fetch_ts = export_record.fetch_timestamp.replace(tzinfo=UTC)
+                performance_duration = export_ts - fetch_ts
+                logger.debug(f"Performance duration: {performance_duration.total_seconds():.2f}s")
+                export_record.query_performance = QueryPerformance(duration=performance_duration, is_spatial=is_spatial)
+                session.commit()
+            self._set_worker_status(worker_id, ExportDownloadStatus.COMPLETE)

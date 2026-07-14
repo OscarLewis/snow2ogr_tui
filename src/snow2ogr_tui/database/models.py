@@ -131,6 +131,7 @@ class Exports(Base):
         sf_data_timestamp: Timestamp of the source data in Snowflake.
         fetch_timestamp: When the export record was created; defaults to
             the database server's current time.
+        export_timestamp: When (if) the export was created.
         output_path: Filesystem path where the export output was written.
         status: Current :class:`ExportStatus` of the export.
         query_performance: One-to-one related :class:`QueryPerformance`
@@ -158,6 +159,8 @@ class Exports(Base):
         DateTime(timezone=True),
         server_default=func.now(),
     )
+
+    export_timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
 
     output_path: Mapped[Path | None] = mapped_column(
         PathType(500),

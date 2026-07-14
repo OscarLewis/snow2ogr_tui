@@ -2,7 +2,6 @@
 
 from typing import ClassVar
 
-import polars as pl
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Center, Container, Vertical
