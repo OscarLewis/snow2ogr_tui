@@ -1,7 +1,10 @@
 """Downloader Screen Widget."""
 
+from datetime import UTC, datetime, timedelta
 from typing import ClassVar
 
+from loguru import logger
+from rich.text import Text
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Center, Container, Vertical
@@ -10,7 +13,8 @@ from textual.message import Message
 from textual.screen import ModalScreen
 from textual.widgets import Button, ProgressBar, Static
 
-from snow2ogr_tui.common.models import TableSet
+from snow2ogr_tui.common.models import ExportDownloadStatus, TableSet
+from snow2ogr_tui.widgets.export_manager import ExportProgress
 
 
 class DownloadButtonPressed(Message):
@@ -21,6 +25,16 @@ class DownloadButtonPressed(Message):
         super().__init__()
 
         self.table_set = table_set
+
+
+class DownloadScreenOpened(Message):
+    """Posted when a download screen is opened for a tableset."""
+
+    def __init__(self, group_key: str) -> None:
+        """Initialize the message/event with the loaded table data."""
+        super().__init__()
+
+        self.group_key = group_key
 
 
 class DownloaderScreen(ModalScreen):
@@ -41,7 +55,8 @@ class DownloaderScreen(ModalScreen):
     #downloader-container {
         width: 80;
         height: auto;
-        max-width: 90;
+        max-height: 90%;
+        max-width: 120;
         border: $accent;
         background: $surface;
         padding: 1 2;
@@ -89,22 +104,25 @@ class DownloaderScreen(ModalScreen):
     }
     """
     group_key: str
+    group_key_export_status: ExportDownloadStatus
 
     def __init__(self, group_key: str, table_set: TableSet) -> None:
         """Initialize the downloader screen."""
         super().__init__()
-
+        self.group_key_export_status = ExportDownloadStatus.UNKNOWN
         self.Territory_Table = table_set.Territory_Table
         self.Geometry_Table = table_set.Geometry_Table
         self.NDM_Table = table_set.NDM_Table
         self.Names_Table = table_set.Name_Table
         self.table_set = table_set
         self.group_key = group_key
+        self._progress_timer = self.set_interval(0.2, self._update_progress_bar)
+        self._progress: ExportProgress | None = None
 
     def compose(self) -> ComposeResult:
         """Compose the downloader screen."""
         with Container(id="downloader-container"), Vertical():
-            yield Static("Downloader", id="title")
+            yield Static("Export Tables", id="title")
 
             yield Static("Selected Table Set", classes="heading")
             yield Static(f"{self.Territory_Table}", id="selected-table")
@@ -136,6 +154,12 @@ class DownloaderScreen(ModalScreen):
                 id="footer",
             )
 
+    def on_mount(self) -> None:
+        """Post a message to app when a DownloadScreen is opened."""
+        self.set_interval(0.2, self._update_progress_bar)
+        if self.table_set.Group_Key:
+            self.post_message(DownloadScreenOpened(self.table_set.Group_Key))
+
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle button presses."""
         if event.button.id == "start-download-button":
@@ -161,3 +185,47 @@ class DownloaderScreen(ModalScreen):
         """Dismiss the modal when the background is clicked."""
         if event.widget is self:
             self.dismiss()
+
+    def _update_progress_bar(self) -> None:
+        if (
+            self._progress is None
+            or self._progress.status == ExportDownloadStatus.COMPLETED
+            or self._progress.estimated_duration is None
+        ):
+            return
+
+        estimated = self._progress.estimated_duration.total_seconds()
+        if estimated <= 0:
+            return
+
+        elapsed = (datetime.now(UTC) - self._progress.started_at).total_seconds()
+        percent = min(elapsed / estimated * 100, 99)
+
+        self.query_one("#download-progress", ProgressBar).update(progress=percent)
+
+    def update_status(self, progress: ExportProgress) -> None:
+        """Update the Export status presented to the user."""
+        self._progress = progress
+        self.group_key_export_status = progress.status
+        logger.debug(f"Updating DownloaderScreen with {progress.status} for {self.group_key}")
+        self._estimated_duration = progress.estimated_duration
+
+        current_step = self.query_one("#current-step", Static)
+        if self.group_key_export_status != ExportDownloadStatus.UNKNOWN:
+            download_button = self.query_one("#start-download-button", Button)
+            download_button.visible = False
+        bar = self.query_one("#download-progress", ProgressBar)
+        if progress.status == ExportDownloadStatus.COMPLETED:
+            bar.update(progress=100)
+            self._progress_timer.pause()
+            current_step.update(
+                Text.assemble(
+                    str(progress.status),
+                    " to ",
+                    Text(progress.export_path.as_posix(), style="italic"),
+                ),
+            )
+        else:
+            self._update_progress_bar()
+
+            current_step.update(Text.assemble(str(progress.status), Text("...")))

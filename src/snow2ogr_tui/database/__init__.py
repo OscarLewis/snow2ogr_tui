@@ -1,6 +1,6 @@
 """Top-level package for snow2ogr DB models."""
 
-from .models import Exports, ExportStatus, QueryPerformance
+from .models import Exports, QueryPerformance
 from .queries import fetch_exports_df
 from .setup import init_db
 

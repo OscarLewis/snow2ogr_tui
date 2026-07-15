@@ -9,7 +9,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import cast
+from typing import NamedTuple, cast
 
 import adbc_driver_snowflake.dbapi
 import polars as pl
@@ -99,11 +99,6 @@ def fetch_table_to_polars(
         df = df.with_columns(pl.col("FEATURE_ID").cast(pl.Int64))
 
     return df
-
-
-def geo_col(name: str) -> st.GeoExpr:
-    """Create a typed Polars expression with polars-st spatial methods available."""
-    return cast("st.GeoExpr", pl.col(name))
 
 
 def fetch_geography_to_polars_st(
@@ -439,6 +434,111 @@ def prepare_spatial_table(
     )
 
 
+def get_table_shape(
+    conn: adbc_driver_snowflake.dbapi.Connection,
+    database: str,
+    schema: str,
+    table_name: str,
+) -> tuple[int, int]:
+    """Return the shape of a Snowflake table as (rows, columns)."""
+    metadata = MetaData(schema=schema)
+    table = Table(table_name, metadata)
+
+    stmt = select(func.count()).select_from(table)
+    query = str(stmt.compile(compile_kwargs={"literal_binds": True}))
+
+    with conn.cursor() as cursor:
+        cursor.execute(query)
+        result = cursor.fetchone()
+
+    if result is None:
+        msg = f"Failed to retrieve row count for table '{table_name}'."
+        raise RuntimeError(msg)
+
+    row_count = result[0]
+    column_count = len(get_table_columns_with_types(conn, database, schema, table_name))
+
+    return int(row_count), int(column_count)
+
+
+class TableSetResult(NamedTuple):
+    """Result of fetching a table set with metadata."""
+
+    dataframe: pl.DataFrame | st.GeoDataFrame
+    is_spatial: bool
+    geometry_col: str | None
+    table_shapes: list[tuple[int, int]]
+    joined_tables: dict[str, str]
+
+
+class TableSetMetrics(NamedTuple):
+    """Metrics on a set of tables."""
+
+    table_names: list[str | None]
+    is_spatial: bool
+    joined_tables: dict[str, str]
+    table_shapes: list[tuple[int, int]]
+
+
+def fetch_metrics_tables(
+    conn: adbc_driver_snowflake.dbapi.Connection,
+    schema: str,
+    database: str,
+    territory_table: str,
+    geometry_table: str | None = None,
+    name_table: str | None = None,
+    ndm_table: str | None = None,
+) -> TableSetMetrics:
+    """Fetch metrics information about a set of Snowflake tables."""
+    is_spatial: bool = False
+    joined_tables: dict[str, str] = {}
+    joined_tables["main"] = "territory_primary_table"
+
+    # Construct a list of table shapes
+    table_shapes = [
+        get_table_shape(
+            conn,
+            database,
+            schema,
+            territory_table,
+        ),
+        *(
+            get_table_shape(
+                conn,
+                database,
+                schema,
+                table_name,
+            )
+            for table_name in (name_table, geometry_table, ndm_table)
+            if table_name is not None
+        ),
+    ]
+    if name_table:
+        joined_tables["join_1"] = "name_table"
+    if geometry_table:
+        is_spatial = True
+        joined_tables["join_2"] = "geometry_table"
+    if ndm_table:
+        joined_tables["join_3"] = "NDM_table"
+
+    # Really basic check to see if we think this will be a spatial export
+    if not geometry_table:
+        territory_table_sf_schema = get_table_columns_with_types(conn, database, schema, territory_table)
+        is_spatial = (
+            any(name == "GEOMETRY" for name, _ in territory_table_sf_schema)
+            or any(name == "GEOMETRY_GEOGRAPHY" for name, _ in territory_table_sf_schema)
+            or any(name == "WKB" for name, _ in territory_table_sf_schema)
+            or any(dtype == "GEOGRAPHY" for _, dtype in territory_table_sf_schema)
+        )
+
+    return TableSetMetrics(
+        [territory_table, name_table, geometry_table, ndm_table],
+        is_spatial,
+        joined_tables,
+        table_shapes,
+    )
+
+
 def fetch_table_set(
     conn: adbc_driver_snowflake.dbapi.Connection,
     database: str,
@@ -448,11 +548,14 @@ def fetch_table_set(
     name_table: str | None = None,
     ndm_table: str | None = None,
     status_callback: StatusCallback | None = None,
-) -> tuple[pl.DataFrame | st.GeoDataFrame, bool]:
+) -> TableSetResult:
     """Fetch a territory dataset and optionally join names, geometry, and NDM.
 
     Returns a GeoDataFrame if any input table contains geometry.
     """
+    table_shapes: list[tuple[int, int]] = []
+    joined_tables: dict[str, str] = {}
+
     if territory_table is None:
         msg = "territory_table is required."
         raise ValueError(msg)
@@ -476,6 +579,7 @@ def fetch_table_set(
             schema,
             territory_table,
         )
+        table_shapes.append(result.shape)
         geometry_column = None
     else:
         # Territory table may contain geometry.
@@ -486,6 +590,7 @@ def fetch_table_set(
             schema,
             territory_table,
         )
+        table_shapes.append(result.shape)
 
     # Join names.
     if name_table:
@@ -499,6 +604,7 @@ def fetch_table_set(
                 name_table,
             ),
         )
+        table_shapes.append(names.shape)
 
         result = result.join(
             names,
@@ -515,7 +621,7 @@ def fetch_table_set(
             schema,
             geometry_table,
         )
-
+        table_shapes.append(geometry.shape)
         update(ExportDownloadStatus.JOINING_TABLES)
         result = result.join(
             geometry,
@@ -538,8 +644,8 @@ def fetch_table_set(
             schema,
             ndm_table,
         )
+        table_shapes.append(ndm.shape)
         ndm_transformed = build_ndm_df(ndm)
-
         result = result.join(
             ndm_transformed,
             on="FEATURE_ID",
@@ -559,10 +665,23 @@ def fetch_table_set(
             result,
             geometry_name="geometry",
         )
+        # Unary union all GeometryCollections to remove them
+        result = result.with_columns(
+            geometry=pl.when(
+                st.geom("geometry").st.geometry_type() == "GeometryCollection",
+            )
+            .then(st.geom("geometry").st.unary_union())
+            .otherwise(pl.col("geometry")),
+        )
+        # Group by and union by Feature ID to merge any large geometries that got split by Snowflake
+        result = result.group_by("FEATURE_ID").agg(
+            st.geom("geometry").st.union_all().alias("geometry"),
+            pl.exclude("geometry").first(),
+        )
     update(ExportDownloadStatus.JOINING_TABLES)
     logger.debug(f"Result table shape: {result.shape}")
     update(ExportDownloadStatus.FINALIZING)
-    return result, bool(geometry_column)
+    return TableSetResult(result, bool(geometry_column), geometry_column, table_shapes, joined_tables)
 
 
 def detect_geometry(
@@ -697,7 +816,7 @@ def write_geopackage(
     if geometry_column.lower() not in (name.lower() for name in gdf.schema.names()):
         raise ValueError(f"Geometry column '{geometry_column}' not found.")
 
-    srids = gdf.select(geo_col(geometry_column).st.srid().alias("srid"))
+    srids = gdf.select(st.geom(geometry_column).st.srid().alias("srid"))
 
     # File writing engine cannot handle Decimal columns with precision > 19.
     decimal_casts = [

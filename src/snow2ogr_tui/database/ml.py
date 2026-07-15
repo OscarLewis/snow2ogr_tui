@@ -55,7 +55,7 @@ def _table_shape_features(
         cols = 0
 
         if shapes:
-            for shape in shapes.values():
+            for shape in shapes:  # Just iterate directly over the list
                 if shape:
                     rows += shape[0]
                     cols += shape[1]

@@ -6,7 +6,6 @@ export metadata and query performance details.
 """
 
 from datetime import UTC, datetime, timedelta
-from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
@@ -29,27 +28,7 @@ from sqlalchemy.orm import (
     relationship,
 )
 
-
-class ExportStatus(StrEnum):
-    """Enumeration of possible export statuses.
-
-    Inherits from ``str`` so members compare equal to their string
-    values and serialize cleanly (e.g. to JSON or as SQL enum values).
-
-    Attributes:
-        IN_PROGRESS: The export has started but has not yet finished.
-        COMPLETED: The export finished successfully.
-        FAILED: The export was attempted but raised an error.
-        MISSING: The expected export output could not be found.
-        UNKNOWN: The export status has not been determined.
-
-    """
-
-    IN_PROGRESS = "in_progress"
-    COMPLETED = "completed"
-    FAILED = "failed"
-    MISSING = "missing"
-    UNKNOWN = "unknown"
+from snow2ogr_tui.common.models import ExportDownloadStatus
 
 
 # Store and retrieves Paths and strings
@@ -167,9 +146,9 @@ class Exports(Base):
         nullable=True,
     )
 
-    status: Mapped[ExportStatus] = mapped_column(
-        SQLEnum(ExportStatus),
-        default=ExportStatus.UNKNOWN,
+    status: Mapped[ExportDownloadStatus] = mapped_column(
+        SQLEnum(ExportDownloadStatus),
+        default=ExportDownloadStatus.UNKNOWN,
         nullable=False,
     )
 
@@ -192,6 +171,8 @@ class QueryDurationModelRegistry(Base):
         default=datetime.now(UTC),
         nullable=False,
     )
+
+    model_name: Mapped[str] = mapped_column(String, nullable=False)
 
     model_type: Mapped[str] = mapped_column(
         String,

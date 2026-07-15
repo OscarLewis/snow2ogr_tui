@@ -1,26 +1,25 @@
 """Main function for creating a TUI App."""
 
 from pathlib import Path
-from typing import ClassVar, cast
+from typing import TYPE_CHECKING, ClassVar
 
-from adbc_driver_snowflake.dbapi import Connection
 from loguru import logger
 from platformdirs import user_log_dir
-from rich.text import Text
-from textual import work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.widgets import Static, TabbedContent, TabPane
+from textual.widgets import TabbedContent, TabPane
 
-from snow2ogr_tui.common import TableSet
-from snow2ogr_tui.common.models import ExportDownloadStatus
-from snow2ogr_tui.database import Exports, ExportStatus, init_db
-from snow2ogr_tui.pipelines.export_manager import ExportDownloadStatusChanged, ExportManager
+from snow2ogr_tui.database import init_db
 from snow2ogr_tui.widgets import AppHeader, DataTableTab, DownloadsTab, VimDataTable
 from snow2ogr_tui.widgets.data_table import TablesLoaded
-from snow2ogr_tui.widgets.downloader_screen import DownloadButtonPressed, DownloaderScreen
+from snow2ogr_tui.widgets.downloader_screen import DownloadButtonPressed, DownloaderScreen, DownloadScreenOpened
+from snow2ogr_tui.widgets.export_manager import ExportDownloadStatusChanged, ExportManager
 from snow2ogr_tui.widgets.help_screen import HelpScreen
+from snow2ogr_tui.widgets.ml_manager import MLManager
 from snow2ogr_tui.widgets.sf_login import SFLoginScreen, SnowflakeConnected
+
+if TYPE_CHECKING:
+    from adbc_driver_snowflake.dbapi import Connection
 
 # Remove loguru's default stderr sink (avoids fighting with Textual's terminal control)
 logger.remove()
@@ -55,11 +54,38 @@ class TuiApp(App):
     }
     """
 
-    # DB Set Up
-    DB_Path = Path("snow2ogr.db")
-    engine, sessionlocal = init_db(DB_Path, reset=False, echo=False)
-    sf_conn: Connection | None = None
-    export_manager = ExportManager(dom_id="export-manager")
+    # TODO: Switch to installing screens instead of creating and destroying them each time I use one
+
+    def __init__(
+        self,
+        db_path: Path | str = Path("snow2ogr.db"),
+        *,
+        reset_db: bool = False,
+        echo_sql: bool = False,
+        **kwargs,
+    ) -> None:
+        """Initialize the TUI application and its database/engine.
+
+        Args:
+            db_path: Path to the SQLite database file.
+            reset_db: If True, reset the database schema (delete all rows).
+            echo_sql: If True, enable SQL echoing for debugging.
+            **kwargs: Additional keyword arguments forwarded to the base App constructor.
+
+        """
+        super().__init__(**kwargs)
+
+        self.db_path = Path(db_path)
+
+        self.engine, self.sessionlocal = init_db(
+            self.db_path,
+            reset=reset_db,
+            echo=echo_sql,
+        )
+
+        self.sf_conn: Connection | None = None
+        self.export_manager: ExportManager = ExportManager(dom_id="export-manager")
+        self.ml_manager: MLManager = MLManager(dom_id="ml-manager")
 
     BINDINGS: ClassVar[list[Binding]] = [
         # Global bindings - tab-specific bindings are defined in each tab class
@@ -73,6 +99,7 @@ class TuiApp(App):
         """Create child widgets for the app."""
         # First thing is to add the invisible ExportManager that lives in the background of all things
         yield self.export_manager
+        yield self.ml_manager
         yield AppHeader("snow2ogr")
         with TabbedContent(id="main-tabs"):
             with TabPane("Snowflake Tables", id="data-table-tab"):
@@ -117,6 +144,20 @@ class TuiApp(App):
         else:
             self.push_screen(HelpScreen())
 
+    def on_download_screen_opened(self, message: DownloadScreenOpened) -> None:
+        """Handle updating DownloadScreen on open if a download is running."""
+        progress = next(
+            (
+                progress
+                for progress in self.export_manager.export_workers.values()
+                if progress.table_set.Group_Key == message.group_key
+            ),
+            None,
+        )
+        for screen in self.screen_stack:
+            if (progress) and (isinstance(screen, DownloaderScreen)) and (screen.group_key == message.group_key):
+                screen.update_status(progress)
+
     def on_export_download_status_changed(
         self,
         event: ExportDownloadStatusChanged,
@@ -124,25 +165,10 @@ class TuiApp(App):
         """Handle export status change notifications from workers."""
         progress = self.export_manager.export_workers[event.worker_id]
         logger.debug(f"Export Status Change message recieved for {progress.worker_id} - Group Key {event.group_key}")
-        seen_group_keys = []
         # Search the screen stack
         for screen in self.screen_stack:
-            if isinstance(screen, DownloaderScreen):
-                seen_group_keys.append(screen.group_key)
-                if screen.group_key == event.group_key:
-                    current_step = screen.query_one("#current-step", Static)
-                    if progress.status == ExportDownloadStatus.COMPLETE:
-                        current_step.update(
-                            Text.assemble(
-                                str(progress.status),
-                                " to ",
-                                Text(progress.export_path.as_posix(), style="italic"),
-                            ),
-                        )
-                    else:
-                        current_step.update(Text.assemble(str(progress.status), Text("...")))
-                    logger.debug(f"Updated screen for {event.group_key}")
-        logger.debug(f"Group Keys with open screens: {seen_group_keys}")
+            if (isinstance(screen, DownloaderScreen)) and (screen.group_key == event.group_key):
+                screen.update_status(progress)
 
 
 def main() -> None:

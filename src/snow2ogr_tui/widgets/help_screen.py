@@ -1,6 +1,6 @@
 """Help Screen Widget."""
 
-from typing import ClassVar, cast
+from typing import TYPE_CHECKING, ClassVar, cast
 
 from textual.app import ComposeResult
 from textual.binding import Binding
@@ -8,6 +8,11 @@ from textual.containers import Container
 from textual.events import Click
 from textual.screen import ModalScreen
 from textual.widgets import Markdown
+
+from snow2ogr_tui.widgets.ml_settings import MLSettingsScreen
+
+if TYPE_CHECKING:
+    from snow2ogr_tui.main import TuiApp
 
 HELP_TEXT = """\
 # Help
@@ -24,13 +29,6 @@ HELP_TEXT = """\
 
 class HelpScreen(ModalScreen):
     """A modal popup showing help text."""
-
-    BINDINGS: ClassVar[list[Binding]] = [
-        Binding("escape,question_mark", "dismiss_help", "Close help"),
-        Binding("d", "toggle_dark", "Toggle Dark Mode"),
-        Binding("ctrl+q", "quit", "Quit"),
-        Binding("f", "toggle_table_filter", "Toggle Filter"),
-    ]
 
     DEFAULT_CSS = """
     HelpScreen {
@@ -63,10 +61,27 @@ class HelpScreen(ModalScreen):
 
     """
 
+    BINDINGS: ClassVar[list[Binding]] = [
+        Binding("escape,question_mark", "dismiss_help", "Close help"),
+        Binding("d", "toggle_dark", "Toggle Dark Mode"),
+        Binding("ctrl+q", "quit", "Quit"),
+        Binding("m", "open_ml_manager", "ML Settings"),
+        Binding("f", "toggle_table_filter", "Toggle Filter"),
+    ]
+
     def compose(self) -> ComposeResult:
         """Compose the help screen with a container and markdown widget."""
         with Container(id="help-container"):
             yield Markdown(HELP_TEXT)
+
+    @property
+    def tui_app(self) -> "TuiApp":
+        """Return the parent TuiApp instance for this widget.
+
+        This casts self.app to the concrete TuiApp type so callers get proper
+        typing information when accessing application-level attributes.
+        """
+        return cast("TuiApp", self.app)
 
     async def action_toggle_table_filter(self) -> None:
         """Toggle the table filter."""
@@ -79,6 +94,10 @@ class HelpScreen(ModalScreen):
     def action_toggle_dark(self) -> None:
         """Delegate toggle dark mode to the app."""
         self.app.action_toggle_dark()
+
+    def action_open_ml_manager(self) -> None:
+        """Open the ML Manager Window."""
+        self.tui_app.push_screen(MLSettingsScreen())
 
     async def action_quit(self) -> None:
         """Delegate quit to the app."""

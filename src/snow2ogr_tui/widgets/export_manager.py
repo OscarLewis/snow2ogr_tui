@@ -1,21 +1,22 @@
 """Export Manager for Snow2OGR."""
 
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 from loguru import logger
 from platformdirs import user_downloads_path
 from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.sql.functions import mode
 from textual.message import Message
 from textual.widget import Widget
 from textual.worker import Worker
 
 from snow2ogr_tui.common import TableSet
 from snow2ogr_tui.common.models import ExportDownloadStatus, GeospatialOutputFormat
-from snow2ogr_tui.database import Exports, ExportStatus, QueryPerformance
-from snow2ogr_tui.pipelines.downloader import fetch_table_set, write_geopackage
+from snow2ogr_tui.database import Exports, QueryPerformance
+from snow2ogr_tui.pipelines.downloader import fetch_metrics_tables, fetch_table_set, write_geopackage
 
 if TYPE_CHECKING:
     from snow2ogr_tui.main import TuiApp
@@ -29,10 +30,11 @@ class ExportProgress:
     table_set: TableSet
     worker: Worker
     export_path: Path
+    started_at: datetime
     status: ExportDownloadStatus
+    estimated_duration: timedelta
 
 
-# TODO: Change this to ExportProgress
 class ExportDownloadStatusChanged(Message):
     """Notify listeners when an export worker changes status."""
 
@@ -52,6 +54,11 @@ class ExportManager(Widget):
     }
     """
 
+    def __init__(self, name: str | None = None, dom_id: str | None = None, classes: str | None = None) -> None:
+        """Create a new export manager instance."""
+        super().__init__(name=name, id=dom_id, classes=classes)
+        self.export_workers: dict[str, ExportProgress] = {}
+
     @property
     def tui_app(self) -> "TuiApp":
         """Return the parent TuiApp instance for this widget.
@@ -66,11 +73,6 @@ class ExportManager(Widget):
         """Return the application's current Snowflake connection."""
         return self.tui_app.sessionlocal
 
-    def __init__(self, name: str | None = None, dom_id: str | None = None, classes: str | None = None) -> None:
-        """Create a new manager instance."""
-        super().__init__(name=name, id=dom_id, classes=classes)
-        self.export_workers: dict[str, ExportProgress] = {}
-
     def register_download(self, table_set: TableSet) -> str | None:
         """Register a new download and return worker ID."""
         if table_set.Territory_Table is None:
@@ -84,20 +86,25 @@ class ExportManager(Widget):
             geography_table=table_set.Geometry_Table,
             name_table=table_set.Name_Table,
             ndm_table=table_set.NDM_Table,
-            status=ExportStatus.UNKNOWN,
+            status=ExportDownloadStatus.UNKNOWN,
         )
         with self.sessionlocal() as session:
             session.add(new_export_record)
             logger.debug(f"Worker {worker_id} recording to database.")
             session.commit()
 
-        # TODO: Register a new Worker object assigned to export that table_set
         export_path = user_downloads_path()
 
         out_file_path = export_path / Path(table_set.Territory_Table).with_suffix(".gpkg")
 
         export_worker = self.run_worker(
-            self._export_table_set(worker_id, table_set, GeospatialOutputFormat.GEOPACKAGE, export_path),
+            self._export_table_set(
+                worker_id,
+                new_export_record.id,
+                table_set,
+                GeospatialOutputFormat.GEOPACKAGE,
+                export_path,
+            ),
             name=worker_id,
             exclusive=False,
             thread=True,
@@ -108,7 +115,9 @@ class ExportManager(Widget):
             table_set,
             export_worker,
             out_file_path,
+            datetime.now(UTC),
             ExportDownloadStatus.IDLE,
+            timedelta(seconds=0),
         )
         return worker_id
 
@@ -142,6 +151,7 @@ class ExportManager(Widget):
     async def _export_table_set(
         self,
         worker_id: str,
+        export_record_id: int,
         table_set: TableSet,
         export_format: GeospatialOutputFormat,
         export_path: Path,
@@ -150,25 +160,71 @@ class ExportManager(Widget):
         if table_set.Territory_Table is None:
             msg = "Territory_Table is required."
             raise ValueError(msg)
-        with self.sessionlocal() as session:
-            export_record = session.query(Exports).filter(Exports.group_key == table_set.Group_Key).first()
-            if export_record is None:
-                msg = f"No export records found in SQL filter for group key {table_set.Group_Key}"
-                " when there should be at least one result"
-                raise ValueError(msg)
-            export_record.fetch_timestamp = datetime.now(UTC)
-            session.commit()
+        if self.tui_app.sf_conn is None:
+            msg = "Snowflake Connection is missing."
+            raise RuntimeError(msg)
+
+        out_file_path = export_path / Path(table_set.Territory_Table).with_suffix(".gpkg")
+        logger.debug(f"Exporting {table_set.Group_Key} file to {out_file_path}")
 
         self.schema = "TERRITORY_APP"
         self.database = "MAPS_DATA_SEMANTIC_DB"
-        logger.debug(f"Exporting {table_set.Group_Key} file to {export_path} in format {export_format}.")
-        out_file_path = export_path / Path(table_set.Territory_Table).with_suffix(".gpkg")
-        if self.tui_app.sf_conn is None:
-            msg_0 = "No Snowflake connection available."
-            raise RuntimeError(msg_0)
+
+        # TODO: This call to SnowFlake is causing a hitch in performance
+        # where the button to download doesn't go invisible for a second
+        table_metrics = fetch_metrics_tables(
+            self.tui_app.sf_conn,
+            self.schema,
+            self.database,
+            table_set.Territory_Table,
+            table_set.Geometry_Table,
+            table_set.Name_Table,
+            table_set.NDM_Table,
+        )
+
+        with self.sessionlocal() as session:
+            export_record = session.query(Exports).filter(Exports.id == export_record_id).first()
+            if export_record is None:
+                msg = "No export records found in SQL filter for"
+                " Export ID {export_record_id} / Group Key {table_set.Group_Key}"
+                " when there should be at least one result"
+                raise ValueError(msg)
+            # Update the fetch_timestamp and status of the record for this export in the database
+            export_record.fetch_timestamp = datetime.now(UTC)
+            export_record.status = ExportDownloadStatus.IN_PROGRESS
+            total_rows, total_col = map(sum, zip(*table_metrics.table_shapes, strict=True))
+
+            query_performance = QueryPerformance(
+                rows_fetched=total_rows,
+                columns_fetched=total_col,
+                is_spatial=table_metrics.is_spatial,
+                table_shapes=table_metrics.table_shapes,
+                joined_tables=table_metrics.joined_tables,
+            )
+
+            model_duration = self.tui_app.ml_manager.predict(
+                query_performance,
+            )
+            self.export_workers[worker_id].estimated_duration = model_duration
+
+            query_performance.predicted_duration = model_duration
+
+            model_registry_entry = self.tui_app.ml_manager.model_registry_entry
+            if model_registry_entry is None:
+                msg = "predict() returned successfully but no model registry entry is loaded."
+                raise RuntimeError(msg)
+            query_performance.prediction_model_id = model_registry_entry.id
+
+            export_record.query_performance = query_performance
+            session.commit()
+
+        logger.debug(f"Model predicted export duration of: {model_duration.total_seconds():2f}s")
+        session.commit()
+
+        # Start actually downloading the table
         try:
             self._set_worker_status(worker_id, ExportDownloadStatus.FETCHING_TABLES)
-            df, is_spatial = fetch_table_set(
+            fetch_result = fetch_table_set(
                 self.tui_app.sf_conn,
                 database=self.database,
                 schema=self.schema,
@@ -178,22 +234,37 @@ class ExportManager(Widget):
                 ndm_table=table_set.NDM_Table,
                 status_callback=lambda status: self._set_worker_status(worker_id, status),
             )
+            df, is_spatial, geometry_column, table_shapes, joined_tables = fetch_result
+            if is_spatial:
+                logger.debug(
+                    f"Geometry detected in column '{geometry_column}' for"
+                    f" export {export_record_id} (group key: {table_set.Group_Key})",
+                )
         except Exception:
             self._set_worker_status(worker_id, ExportDownloadStatus.FAILED)
             raise
-        else:
-            self._set_worker_status(worker_id, ExportDownloadStatus.EXPORTING_FILE)
-            write_geopackage(df, out_file_path)
-            with self.sessionlocal() as session:
-                export_record = session.query(Exports).filter_by(group_key=table_set.Group_Key).first()
-                if export_record is None:
-                    msg = f"Expected an export record for group key {table_set.Group_Key!r}, but none was found."
-                    raise ValueError(msg)
-                export_record.export_timestamp = datetime.now(UTC)
-                export_ts = export_record.export_timestamp.replace(tzinfo=UTC)
-                fetch_ts = export_record.fetch_timestamp.replace(tzinfo=UTC)
-                performance_duration = export_ts - fetch_ts
-                logger.debug(f"Performance duration: {performance_duration.total_seconds():.2f}s")
-                export_record.query_performance = QueryPerformance(duration=performance_duration, is_spatial=is_spatial)
-                session.commit()
-            self._set_worker_status(worker_id, ExportDownloadStatus.COMPLETE)
+
+        self._set_worker_status(worker_id, ExportDownloadStatus.EXPORTING_FILE)
+        write_geopackage(df, out_file_path)
+        with self.sessionlocal() as session:
+            export_record = session.query(Exports).filter(Exports.id == export_record_id).first()
+            if export_record is None:
+                msg = "No export records found in SQL filter for"
+                " Export ID {export_record_id} / Group Key {table_set.Group_Key}"
+                " when there should be at least one result"
+                raise ValueError(msg)
+            export_record.export_timestamp = datetime.now(UTC)
+            export_ts = export_record.export_timestamp.replace(tzinfo=UTC)
+            fetch_ts = export_record.fetch_timestamp.replace(tzinfo=UTC)
+            performance_duration = export_ts - fetch_ts
+            query_perf = export_record.query_performance
+            if query_perf:
+                query_perf.duration = performance_duration
+                query_perf.is_spatial = is_spatial
+
+            logger.debug(
+                f"Performance duration: {performance_duration.total_seconds():.2f}s",
+            )
+            export_record.status = ExportDownloadStatus.COMPLETED
+            session.commit()
+        self._set_worker_status(worker_id, ExportDownloadStatus.COMPLETED)

@@ -34,6 +34,11 @@ class ExportDownloadStatus(StrEnum):
 
     IDLE = auto()
 
+    IN_PROGRESS = auto()
+
+    MISSING = auto()
+    UNKNOWN = auto()
+
     FETCHING_TABLES = auto()
     FETCHING_TERRITORY = auto()
     FETCHING_NAMES = auto()
@@ -46,7 +51,7 @@ class ExportDownloadStatus(StrEnum):
     EXPORTING_FILE = auto()
     FINALIZING = auto()
 
-    COMPLETE = auto()
+    COMPLETED = auto()
     FAILED = auto()
     CANCELLED = auto()
 
@@ -61,6 +66,9 @@ class ExportDownloadStatus(StrEnum):
 
 _EXPORT_STATUS_TEXT: dict[ExportDownloadStatus, str] = {
     ExportDownloadStatus.IDLE: "Waiting to start",
+    ExportDownloadStatus.MISSING: "Missing",
+    ExportDownloadStatus.UNKNOWN: "Unknown",
+    ExportDownloadStatus.IN_PROGRESS: "In progress",
     ExportDownloadStatus.FETCHING_TABLES: "Fetching tables",
     ExportDownloadStatus.FETCHING_TERRITORY: "Fetching territory table",
     ExportDownloadStatus.FETCHING_NAMES: "Fetching names",
@@ -70,7 +78,7 @@ _EXPORT_STATUS_TEXT: dict[ExportDownloadStatus, str] = {
     ExportDownloadStatus.CONVERTING_GEOMETRY: "Converting geometry",
     ExportDownloadStatus.EXPORTING_FILE: "Writing output file",
     ExportDownloadStatus.FINALIZING: "Finalizing export",
-    ExportDownloadStatus.COMPLETE: "Export complete",
+    ExportDownloadStatus.COMPLETED: "Export completed",
     ExportDownloadStatus.FAILED: "Export failed",
     ExportDownloadStatus.CANCELLED: "Export cancelled",
 }
