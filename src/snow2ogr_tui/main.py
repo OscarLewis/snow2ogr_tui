@@ -12,8 +12,8 @@ from textual.widgets import TabbedContent, TabPane
 from snow2ogr_tui.database import init_db
 from snow2ogr_tui.widgets import AppHeader, DataTableTab, DownloadsTab, VimDataTable
 from snow2ogr_tui.widgets.data_table import TablesLoaded
-from snow2ogr_tui.widgets.downloader_screen import DownloadButtonPressed, DownloaderScreen, DownloadScreenOpened
-from snow2ogr_tui.widgets.export_manager import ExportDownloadStatusChanged, ExportManager
+from snow2ogr_tui.widgets.downloader_screen import DownloadButtonPressed
+from snow2ogr_tui.widgets.export_manager import ExportManager
 from snow2ogr_tui.widgets.help_screen import HelpScreen
 from snow2ogr_tui.widgets.ml_manager import MLManager
 from snow2ogr_tui.widgets.sf_login import SFLoginScreen, SnowflakeConnected
@@ -143,32 +143,6 @@ class TuiApp(App):
             self.pop_screen()
         else:
             self.push_screen(HelpScreen())
-
-    def on_download_screen_opened(self, message: DownloadScreenOpened) -> None:
-        """Handle updating DownloadScreen on open if a download is running."""
-        progress = next(
-            (
-                progress
-                for progress in self.export_manager.export_workers.values()
-                if progress.table_set.Group_Key == message.group_key
-            ),
-            None,
-        )
-        for screen in self.screen_stack:
-            if (progress) and (isinstance(screen, DownloaderScreen)) and (screen.group_key == message.group_key):
-                screen.update_status(progress)
-
-    def on_export_download_status_changed(
-        self,
-        event: ExportDownloadStatusChanged,
-    ) -> None:
-        """Handle export status change notifications from workers."""
-        progress = self.export_manager.export_workers[event.worker_id]
-        logger.debug(f"Export Status Change message recieved for {progress.worker_id} - Group Key {event.group_key}")
-        # Search the screen stack
-        for screen in self.screen_stack:
-            if (isinstance(screen, DownloaderScreen)) and (screen.group_key == event.group_key):
-                screen.update_status(progress)
 
 
 def main() -> None:

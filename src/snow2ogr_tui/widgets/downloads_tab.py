@@ -3,6 +3,7 @@
 from typing import TYPE_CHECKING, ClassVar, cast
 
 from loguru import logger
+from rich.text import Text
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Container
@@ -30,10 +31,9 @@ class DownloadsTab(Container):
         height: 1fr;
     }
 
-    DownloadsTab > Static {
+    #downloads-container {
         height: 1fr;
-        padding: 0 1;
-        text-style: italic;
+        margin: 1 0 0 1;
     }
     """
 
@@ -46,11 +46,26 @@ class DownloadsTab(Container):
         """
         return cast("TuiApp", self.app)
 
+    def on_mount(self) -> None:
+        """Check for any downloads that are in progress."""
+        self.watch(self.tui_app.export_manager, "export_worker_revisions", self._export_revision_changed, init=False)
+
     def compose(self) -> ComposeResult:
         """Compose the tab."""
-        yield Static("Downloads Tab Placeholder (WIP).", id="downloader-placeholder")
-        yield Static(id="session-downloads")
+        with Container(id="downloads-container"):
+            yield Static(Text("Number of current Downloads: 0"), id="session-downloads")
         yield Footer()
+
+    def _export_revision_changed(self) -> None:
+        """Handle changes in export worker revisions."""
+        self._report_current_downloads()
+
+    def _report_current_downloads(self) -> None:
+        """"""
+        session_downloads = self.query_one("#session-downloads", Static)
+        session_downloads.update(
+            Text.assemble(Text("Number of current Downloads: "), str(len(self.tui_app.export_manager.export_workers))),
+        )
 
     def action_clear_downloads(self) -> None:
         """Clear download history."""

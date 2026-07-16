@@ -1,7 +1,8 @@
 """ML Manager Window."""
 
-from typing import TYPE_CHECKING, ClassVar, cast
+from typing import TYPE_CHECKING, Any, ClassVar, cast
 
+from loguru import logger
 from rich.text import Text
 from textual.app import ComposeResult
 from textual.binding import Binding
@@ -9,6 +10,8 @@ from textual.containers import Center, Container
 from textual.message import Message
 from textual.screen import ModalScreen
 from textual.widgets import Button, Static
+
+from snow2ogr_tui.common.models import PackagedModel
 
 if TYPE_CHECKING:
     from snow2ogr_tui.main import TuiApp
@@ -144,11 +147,12 @@ class MLSettingsScreen(ModalScreen):
         """Delegate quit to the app."""
         await self.app.action_quit()
 
-    def _model_registry_changed(self, _) -> None:
+    def _model_registry_changed(self, _model_info: PackagedModel) -> None:
+        logger.debug(f"Refershed model info presented to user: {_model_info}")
         self.refresh_model_info()
 
     def refresh_model_info(self) -> None:
-        """"""
+        """Refresh the displayed model information."""
         self.query_one("#training-records", Static).update(
             Text.assemble(
                 "Number of records to train on: ",

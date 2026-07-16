@@ -135,6 +135,12 @@ class SFLoginScreen(ModalScreen):
         Binding("ctrl+q", "quit", "Quit"),
     ]
 
+    # TODO: Handle this error, happens when trying to login without the VPN on
+    # adbc_driver_manager.OperationalError: IO: [Snowflake] 390422 (08004):
+    # Incoming request with IP/Token 98.59.158.28 is not allowed to access Snowflake.
+    # Contact your account administrator. For more information about this error, go to https://community.snowflake.com/s/ip-xxxxxxxxxxxx-is-not-allowed-to-access..
+    # Vendor code: 390422. SQLSTATE: 08004
+
     def __init__(
         self,
         name: str | None = None,

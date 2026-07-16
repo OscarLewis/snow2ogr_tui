@@ -17,6 +17,7 @@ from textual import work
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Center, Container, Middle, Vertical
+from textual.events import Resize
 from textual.message import Message
 from textual.widgets import LoadingIndicator, Static
 from textual_fastdatatable import DataTable
@@ -119,6 +120,9 @@ class VimDataTable(Container):
         super().__init__(*args, **kwargs)
         self.cursor_type = cursor_type
         self.current_filter: FilterType | None = FilterType.NDMGEO  # Track current filter state
+        self.current_table: pl.DataFrame | None = None
+        self.table_pl_grouped: pl.DataFrame | None = None
+        self.table_pl_pre: pl.DataFrame | None = None
 
     @property
     def tui_app(self) -> "TuiApp":
@@ -169,8 +173,30 @@ class VimDataTable(Container):
             yield text
             yield indicator
 
+    def on_resize(self, event: Resize) -> None:
+        logger.debug(f"Resize: {self.size}")
+
+    #     self._resize_columns()
+
+    # def _resize_columns(self) -> None:
+    #     try:
+    #         table = self.query_one("#data-table", VimStyleTable)
+    #     except Exception:
+    #         return
+
+    #     if not table.columns:
+    #         return
+
+    #     available_width = table.size.width - 6
+    #     table_name_width = int(available_width * 0.7)
+    #     creation_date_width = available_width - table_name_width
+
+    #     table.columns["Table Name"].width = table_name_width
+    #     table.columns["Creation Date"].width = creation_date_width
+
     def on_mount(self) -> None:
         """Set up the table."""
+        # self._refresh_table_with_filter()
 
     @work(exclusive=True)
     async def fetch_data(self) -> None:
@@ -231,6 +257,8 @@ class VimDataTable(Container):
 
             logger.debug(f"Pre-Grouped DF Shape: {self.table_pl_pre.shape}")
             logger.debug(f"Pre-Grouped DF Columns: {self.table_pl_pre.columns}")
+            logger.debug(f"New table size: {table.size}")
+            logger.debug(f"New virtual table size: {table.virtual_size}")
 
             table.add_column("Table Name", width=table_name_width)
             table.add_column("Creation Date", width=creation_date_width)
@@ -252,7 +280,7 @@ class VimDataTable(Container):
                 ],
             )
 
-            table.focus()
+            self.call_after_refresh(table.focus)
 
             # Post message that data has been loaded
             self.post_message(TablesLoaded(tables))
@@ -268,6 +296,9 @@ class VimDataTable(Container):
 
     def _refresh_table_with_filter(self) -> None:
         """Refresh the table with the current filter applied."""
+        if self.table_pl_grouped is None or self.table_pl_pre is None:
+            msg = "Attempted to refresh table with no data loaded."
+            raise RuntimeError(msg)
         # Apply filter to the grouped table
         filtered_table = self.table_pl_pre.clone()
 
@@ -282,7 +313,8 @@ class VimDataTable(Container):
         available_width = self.size.width - 6  # Subtract for padding and borders
         table_name_width = int(available_width * 0.7)
         creation_date_width = available_width - table_name_width
-
+        logger.debug(f"New table size: {new_table.size}")
+        logger.debug(f"New virtual table size: {new_table.virtual_size}")
         new_table.add_column("Table Name", width=table_name_width)
         new_table.add_column("Creation Date", width=creation_date_width)
 
@@ -316,8 +348,7 @@ class VimDataTable(Container):
 
         # Mount the new table back as a child of VimDataTable
         self.mount(new_table)
-
-        new_table.focus()
+        self.call_after_refresh(new_table.focus)
 
         # Update the filter indicator using enum's __str__ method
         filter_indicator = self.query_one("#filter-indicator", Static)
@@ -325,10 +356,13 @@ class VimDataTable(Container):
         filter_indicator.update(f"Filter: {filter_name}")
 
         # Log about the filter change
-        logger.info(f"Filter changed to: {filter_name}")
+        logger.debug(f"Filter changed to: {filter_name}")
 
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
         """Handle table selection."""
+        if self.current_table is None or self.table_pl_grouped is None:
+            msg = "Attempted to refresh table with no data loaded."
+            raise RuntimeError(msg)
         row_index = event.cursor_row
 
         if 0 <= row_index < self.current_table.height:

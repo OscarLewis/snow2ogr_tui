@@ -1,7 +1,8 @@
 """Downloader Screen Widget."""
 
-from datetime import UTC, datetime, timedelta
-from typing import ClassVar
+import re
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, ClassVar, cast
 
 from loguru import logger
 from rich.text import Text
@@ -16,6 +17,9 @@ from textual.widgets import Button, ProgressBar, Static
 from snow2ogr_tui.common.models import ExportDownloadStatus, TableSet
 from snow2ogr_tui.widgets.export_manager import ExportProgress
 
+if TYPE_CHECKING:
+    from snow2ogr_tui.main import TuiApp
+
 
 class DownloadButtonPressed(Message):
     """Posted when the download button is pressed."""
@@ -25,16 +29,6 @@ class DownloadButtonPressed(Message):
         super().__init__()
 
         self.table_set = table_set
-
-
-class DownloadScreenOpened(Message):
-    """Posted when a download screen is opened for a tableset."""
-
-    def __init__(self, group_key: str) -> None:
-        """Initialize the message/event with the loaded table data."""
-        super().__init__()
-
-        self.group_key = group_key
 
 
 class DownloaderScreen(ModalScreen):
@@ -103,13 +97,11 @@ class DownloaderScreen(ModalScreen):
         content-align: center middle;
     }
     """
-    group_key: str
-    group_key_export_status: ExportDownloadStatus
 
     def __init__(self, group_key: str, table_set: TableSet) -> None:
         """Initialize the downloader screen."""
         super().__init__()
-        self.group_key_export_status = ExportDownloadStatus.UNKNOWN
+        self.group_key_export_status: ExportDownloadStatus = ExportDownloadStatus.UNKNOWN
         self.Territory_Table = table_set.Territory_Table
         self.Geometry_Table = table_set.Geometry_Table
         self.NDM_Table = table_set.NDM_Table
@@ -118,6 +110,15 @@ class DownloaderScreen(ModalScreen):
         self.group_key = group_key
         self._progress_timer = self.set_interval(0.2, self._update_progress_bar)
         self._progress: ExportProgress | None = None
+
+    @property
+    def tui_app(self) -> "TuiApp":
+        """Return the parent TuiApp instance for this widget.
+
+        This casts self.app to the concrete TuiApp type so callers get proper
+        typing information when accessing application-level attributes.
+        """
+        return cast("TuiApp", self.app)
 
     def compose(self) -> ComposeResult:
         """Compose the downloader screen."""
@@ -157,8 +158,20 @@ class DownloaderScreen(ModalScreen):
     def on_mount(self) -> None:
         """Post a message to app when a DownloadScreen is opened."""
         self.set_interval(0.2, self._update_progress_bar)
-        if self.table_set.Group_Key:
-            self.post_message(DownloadScreenOpened(self.table_set.Group_Key))
+        self.watch(self.tui_app.export_manager, "export_worker_revisions", self._export_revision_changed, init=False)
+
+    def _export_revision_changed(self, old_value: dict[str, int]) -> None:
+        """Handle changes in export worker revisions for this table set."""
+        current_workers = list(old_value)
+        matching_worker = next(
+            (worker for worker in current_workers if worker.rsplit("_", 1)[0] == self.group_key),
+            None,
+        )
+        if matching_worker:
+            current_progress = self.tui_app.export_manager.export_workers.get(matching_worker)
+            if current_progress is None:
+                return
+            self.update_status(current_progress)
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle button presses."""

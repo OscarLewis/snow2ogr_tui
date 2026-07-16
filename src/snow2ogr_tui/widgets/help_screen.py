@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, ClassVar, cast
 
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.containers import Container
+from textual.containers import ScrollableContainer
 from textual.events import Click
 from textual.screen import ModalScreen
 from textual.widgets import Markdown
@@ -24,6 +24,7 @@ HELP_TEXT = """\
 - `h/j/k/l` or `←/↑/↓/→` - Navigate the cursor
 ## Tips
 - Press `Escape` to close this popup.
+- Press `m` to open up ML Settings for the export duration model.
 """
 
 
@@ -71,7 +72,7 @@ class HelpScreen(ModalScreen):
 
     def compose(self) -> ComposeResult:
         """Compose the help screen with a container and markdown widget."""
-        with Container(id="help-container"):
+        with ScrollableContainer(id="help-container"):
             yield Markdown(HELP_TEXT)
 
     @property

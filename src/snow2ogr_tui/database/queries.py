@@ -6,13 +6,15 @@ polars.DataFrame with appropriate dtype conversions for status and
 timestamp columns.
 """
 
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import polars as pl
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from snow2ogr_tui.database.models import Exports, QueryPerformance
+from snow2ogr_tui.common.models import PackagedModel
+from snow2ogr_tui.database.models import Exports, QueryDurationModelRegistry, QueryPerformance
 
 if TYPE_CHECKING:
     from sqlalchemy.sql import Select
@@ -71,3 +73,21 @@ def fetch_exports_df(session: Session) -> pl.DataFrame:
             )
 
     return df
+
+
+def package_model(model: QueryDurationModelRegistry) -> PackagedModel:
+    """Package a QueryDurationModelRegistry into a PackagedModel.
+
+    Converts the database model instance into the application-facing
+    PackagedModel dataclass, ensuring the artifact_path is returned as a
+    pathlib.Path instance.
+    """
+    return PackagedModel(
+        id=model.id,
+        created_at=model.created_at,
+        name=model.model_name,
+        type=model.model_type,
+        parameters=model.parameters,
+        metrics=model.metrics,
+        artifact_path=Path(model.artifact_path),
+    )

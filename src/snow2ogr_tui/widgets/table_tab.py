@@ -37,7 +37,7 @@ class DataTableTab(Container):
         container_id: str | None = None,
         classes: str | None = None,
     ) -> None:
-        """Initialize the DataTableTab with an optional Snowflake connection."""
+        """Initialize the DataTableTab."""
         super().__init__(name=name, id=container_id, classes=classes)
 
     @property
@@ -52,7 +52,6 @@ class DataTableTab(Container):
 
     def action_toggle_table_filter(self) -> None:
         """Toggle the table filter."""
-        logger.info("Filter toggled")
         # Get the VimDataTable widget
         vim_data_table = self.query_one("#vim-data-table", VimDataTable)
 

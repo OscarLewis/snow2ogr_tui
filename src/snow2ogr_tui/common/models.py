@@ -1,7 +1,36 @@
 """Common data models for snow2ogr_tui."""
 
 from dataclasses import dataclass
+from datetime import datetime
 from enum import StrEnum, auto
+from pathlib import Path
+from typing import Any, NamedTuple
+
+
+class PackagedModel(NamedTuple):
+    """Represents a packaged query duration model registry record."""
+
+    id: int
+    created_at: datetime
+    name: str
+    type: str
+    parameters: dict[str, int | float | str]
+    metrics: dict[str, Any] | None
+    artifact_path: Path
+
+    def __repr__(self) -> str:
+        """Return the canonical string representation of this PackagedModel."""
+        return (
+            f"PackagedModel(\n"
+            f"  id={self.id},\n"
+            f"  created_at={self.created_at:%Y-%m-%d %H:%M:%S},\n"
+            f"  name={self.name!r},\n"
+            f"  type={self.type!r},\n"
+            f"  parameters={self.parameters!r},\n"
+            f"  metrics={self.metrics!r},\n"
+            f"  artifact_path={self.artifact_path!r},\n"
+            f")"
+        )
 
 
 class GeospatialOutputFormat(StrEnum):

@@ -12,41 +12,17 @@ from textual.reactive import reactive
 from textual.widget import Widget
 from textual.worker import Worker, WorkerState
 
-from snow2ogr_tui.common.models import ExportDownloadStatus
+from snow2ogr_tui.common.models import ExportDownloadStatus, PackagedModel
 from snow2ogr_tui.database import Exports, QueryPerformance
 from snow2ogr_tui.database.ml import QueryDurationModel, evaluate_duration_model_kfold, tune_ridge_alpha
 from snow2ogr_tui.database.models import QueryDurationModelRegistry
+from snow2ogr_tui.database.queries import package_model
 from snow2ogr_tui.widgets.ml_settings import TrainModelButtonPressed
 
 if TYPE_CHECKING:
     from types import CoroutineType
 
     from snow2ogr_tui.main import TuiApp
-
-
-class PackagedModel(NamedTuple):
-    """Represents a packaged query duration model registry record."""
-
-    id: int
-    created_at: datetime
-    name: str
-    type: str
-    parameters: dict[str, int | float | str]
-    metrics: dict[str, Any] | None
-    artifact_path: Path
-
-    @classmethod
-    def from_orm(cls, model: QueryDurationModelRegistry) -> Self:
-        """Create a PackagedModel from an ORM registry model."""
-        return cls(
-            id=model.id,
-            created_at=model.created_at,
-            name=model.model_name,
-            type=model.model_type,
-            parameters=model.parameters,
-            metrics=model.metrics,
-            artifact_path=Path(model.artifact_path),
-        )
 
 
 class MLManager(Widget):
@@ -138,7 +114,7 @@ class MLManager(Widget):
         """Fetch the most recently created packaged model from the database."""
         with self.sessionlocal() as session:
             model = session.query(QueryDurationModelRegistry).order_by(QueryDurationModelRegistry.id.desc()).first()
-            return None if model is None else PackagedModel.from_orm(model)
+            return None if model is None else package_model(model)
 
     def _fetch_existing_models(self) -> list[PackagedModel]:
         """Fetch persisted query duration model registry records from the database.
@@ -150,7 +126,7 @@ class MLManager(Widget):
         """
         with self.sessionlocal() as session:
             models: list[QueryDurationModelRegistry] = session.query(QueryDurationModelRegistry).all()
-            return [PackagedModel.from_orm(model) for model in models]
+            return [package_model(model) for model in models]
 
     def watch_ridge_tunings(
         self,
@@ -171,7 +147,7 @@ class MLManager(Widget):
 
     def on_train_model_button_pressed(self, _message: TrainModelButtonPressed) -> None:
         """Handle when the 'Train Model' button is pressed."""
-        logger.info("Train model button clicked.")
+        logger.debug("Train model button clicked.")
         self._training_worker = self._train_ridge_model()
 
     def start_tuning(self) -> None:
@@ -201,28 +177,27 @@ class MLManager(Widget):
                 self.completed_exports,
                 float(self.ridge_tunings["best_alpha"]),
             )
-            parameters = (
-                {
-                    "alpha": float(self.ridge_tunings["best_alpha"]),
-                },
-            )
+            parameters = {
+                "alpha": float(self.ridge_tunings["best_alpha"]),
+            }
             logger.debug(f"Trained model metrics: {self._metrics}")
             logger.debug("Saving model...")
-            model_name = f"ExportDurationRidge_{uuid.uuid4()}"
-            temp_model_out_path = Path("models") / Path(model_name).with_suffix(".joblib")
+            model_name = f"ExportDurationRidge_{datetime.now():%Y%m%d_%H%M%S_%f}"
+            model_out_path = Path("models") / Path(model_name).with_suffix(".joblib")
+            logger.debug(isinstance(parameters, dict))
             with self.sessionlocal() as session:
                 model_record = QueryDurationModelRegistry(
                     model_type="ridge",
                     model_name=model_name,
                     parameters=parameters,
                     metrics=self._metrics,
-                    artifact_path=temp_model_out_path.as_posix(),
+                    artifact_path=model_out_path.as_posix(),
                 )
                 session.add(model_record)
                 session.commit()
                 session.refresh(model_record)
-                self.model_registry_entry = PackagedModel.from_orm(model_record)
-            self.save_model(temp_model_out_path)
+                self.model_registry_entry = package_model(model_record)
+            self.save_model(model_out_path)
 
     def _handle_training_worker(self, event: Worker.StateChanged) -> None:
         """Handle state changes for the model training worker."""

@@ -8,8 +8,9 @@ from typing import TYPE_CHECKING, cast
 from loguru import logger
 from platformdirs import user_downloads_path
 from sqlalchemy.orm import Session, sessionmaker
-from sqlalchemy.sql.functions import mode
+from textual import work
 from textual.message import Message
+from textual.reactive import reactive
 from textual.widget import Widget
 from textual.worker import Worker
 
@@ -53,6 +54,8 @@ class ExportManager(Widget):
         display: none;
     }
     """
+
+    export_worker_revisions: reactive[dict[str, int]] = reactive({})
 
     def __init__(self, name: str | None = None, dom_id: str | None = None, classes: str | None = None) -> None:
         """Create a new export manager instance."""
@@ -119,7 +122,21 @@ class ExportManager(Widget):
             ExportDownloadStatus.IDLE,
             timedelta(seconds=0),
         )
+        self.export_worker_revisions[worker_id] = 0
         return worker_id
+
+    def _update_worker_revision(self, worker_id: str) -> int:
+        """Increment and return the revision number for the given worker."""
+        revisions = self.export_worker_revisions.copy()
+
+        try:
+            revisions[worker_id] += 1
+        except KeyError as exc:
+            msg = ("Attempted to update worker revision for a worker that could not be found by the manager.",)
+            raise ValueError(msg) from exc
+
+        self.export_worker_revisions = revisions
+        return revisions[worker_id]
 
     def on_export_download_status_changed(
         self,
@@ -127,10 +144,12 @@ class ExportManager(Widget):
     ) -> None:
         """Handle export status change notifications from workers."""
         progress = self.export_workers[event.worker_id]
+        revision = self._update_worker_revision(event.worker_id)
         logger.info(
-            "[{}] {}",
+            "[{}] {} - Revision: {}",
             event.worker_id,
             str(progress.status),
+            revision,
         )
 
     def _set_worker_status(
