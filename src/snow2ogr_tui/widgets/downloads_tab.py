@@ -19,10 +19,7 @@ class DownloadsTab(Container):
     """Tab containing download history with download-specific bindings."""
 
     BINDINGS: ClassVar[list[Binding]] = [
-        Binding("ctrl+q", "quit", "Quit"),
         Binding("c", "clear_downloads", "Clear", show=True),
-        Binding("d", "toggle_dark", "Dark Mode"),
-        Binding("question_mark", "toggle_help", "Help"),
     ]
 
     DEFAULT_CSS = """
@@ -71,19 +68,3 @@ class DownloadsTab(Container):
         """Clear download history."""
         logger.info("Clear downloads action triggered")
         # TODO: Implement clear downloads functionality
-
-    def action_toggle_dark(self) -> None:
-        """Toggle dark mode."""
-        self.app.theme = "textual-dark" if self.app.theme == "textual-light" else "textual-light"
-
-    def action_toggle_help(self) -> None:
-        """Toggle Help Screen visibility."""
-        # If help is already open, close it; otherwise open it
-        if isinstance(self.app.screen, HelpScreen):
-            self.app.pop_screen()
-        else:
-            self.app.push_screen(HelpScreen())
-
-    async def action_quit(self) -> None:
-        """Quit the application."""
-        await self.app.action_quit()

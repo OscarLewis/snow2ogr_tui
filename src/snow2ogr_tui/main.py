@@ -11,7 +11,7 @@ from textual.widgets import TabbedContent, TabPane
 
 from snow2ogr_tui.database import init_db
 from snow2ogr_tui.widgets import AppHeader, DataTableTab, DownloadsTab, VimDataTable
-from snow2ogr_tui.widgets.data_table import TablesLoaded
+from snow2ogr_tui.widgets.data_table import FilterToggled, TablesLoaded
 from snow2ogr_tui.widgets.downloader_screen import DownloadButtonPressed
 from snow2ogr_tui.widgets.export_manager import ExportManager
 from snow2ogr_tui.widgets.help_screen import HelpScreen
@@ -89,9 +89,10 @@ class TuiApp(App):
 
     BINDINGS: ClassVar[list[Binding]] = [
         # Global bindings - tab-specific bindings are defined in each tab class
-        Binding("ctrl+q", "quit", "Quit"),
+        Binding("f", "toggle_table_filter", "Toggle Filter"),
         Binding("d", "toggle_dark", "Toggle Dark Mode"),
         Binding("i", "toggle_login", "Login", show=False),
+        Binding("ctrl+q", "quit", "Quit"),
         Binding("question_mark", "toggle_help", "Help"),
     ]
 
@@ -143,6 +144,14 @@ class TuiApp(App):
             self.pop_screen()
         else:
             self.push_screen(HelpScreen())
+
+    def action_toggle_table_filter(self) -> None:
+        """Toggle the table filter."""
+        # Get the VimDataTable widget
+        vim_data_table = self.query_one("#vim-data-table", VimDataTable)
+
+        # Send the FilterToggled message to it
+        vim_data_table.post_message(FilterToggled())
 
 
 def main() -> None:

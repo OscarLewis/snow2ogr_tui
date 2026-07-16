@@ -1,8 +1,10 @@
 """Vim-style data table widget for the Snow2OGR TUI."""
 
+# ruff: noqa: ERA001 - I know there's commented out code in here.
+
 import asyncio
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from typing import TYPE_CHECKING, Any, ClassVar, Literal, cast
 
 import polars as pl
@@ -19,6 +21,7 @@ from textual.binding import Binding
 from textual.containers import Center, Container, Middle, Vertical
 from textual.events import Resize
 from textual.message import Message
+from textual.reactive import reactive
 from textual.widgets import LoadingIndicator, Static
 from textual_fastdatatable import DataTable
 
@@ -34,16 +37,16 @@ if TYPE_CHECKING:
 COLUMNS = ("Table Name", "Creation Date")
 
 
-class FilterType(Enum):
-    """Filter type enumeration with pretty printing."""
+class FilterType(StrEnum):
+    """Filter types for table filtering."""
 
     NDMGEO = "ndmgeo"
+    RAW = "raw"
 
-    def __str__(self) -> str:
-        """Return pretty-printed filter name."""
-        if self == FilterType.NDMGEO:
-            return "NDM/GEO"
-        return self.value
+    @property
+    def label(self) -> str:
+        """Return the display label for the filter type."""
+        return "NDM/GEO" if self is FilterType.NDMGEO else self.value.upper()
 
 
 # Add this message class near the top of your file, after imports
@@ -110,6 +113,10 @@ class VimDataTable(Container):
     }
     """
 
+    # Was the initial table load from Snowflake completed successfully?
+    table_loaded = reactive(False)  # noqa: FBT003 - I am intentionally setting this to default to False
+    current_table_revision = reactive(0)
+
     def __init__(
         self,
         *args: Any,  # noqa: ANN401 since we are creating a Container sub-class
@@ -119,10 +126,10 @@ class VimDataTable(Container):
         """Initialize VimDataTable with DataTable parameters."""
         super().__init__(*args, **kwargs)
         self.cursor_type = cursor_type
-        self.current_filter: FilterType | None = FilterType.NDMGEO  # Track current filter state
-        self.current_table: pl.DataFrame | None = None
-        self.table_pl_grouped: pl.DataFrame | None = None
-        self.table_pl_pre: pl.DataFrame | None = None
+        self.current_filter: FilterType = FilterType.NDMGEO  # Track current filter state
+        self.table_pl_grouped: pl.DataFrame = pl.DataFrame()
+        self.table_pl_pre: pl.DataFrame = pl.DataFrame()
+        self.current_table: pl.DataFrame = pl.DataFrame()
 
     @property
     def tui_app(self) -> "TuiApp":
@@ -174,7 +181,13 @@ class VimDataTable(Container):
             yield indicator
 
     def on_resize(self, event: Resize) -> None:
+        """Handle resize events."""
         logger.debug(f"Resize: {self.size}")
+
+    def on_show(self) -> None:
+        """Handle show events and log widget size."""
+        logger.debug(f"Show: {self.size}")
+        # TODO: Create table in view here instead of in fetch_data
 
     #     self._resize_columns()
 
@@ -288,10 +301,10 @@ class VimDataTable(Container):
     def on_filter_toggled(self, message: FilterToggled) -> None:  # noqa: ARG002 - I know we don't touch the message content
         """Handle filter toggle message and refresh the table."""
         # Cycle through filters: None -> NDMGEO -> None
-        if self.current_filter is None:
+        if self.current_filter == FilterType.RAW:
             self.current_filter = FilterType.NDMGEO
         else:
-            self.current_filter = None
+            self.current_filter = FilterType.RAW
         self._refresh_table_with_filter()
 
     def _refresh_table_with_filter(self) -> None:
@@ -331,7 +344,7 @@ class VimDataTable(Container):
                     for row in (self.table_pl_grouped.iter_rows(named=True))
                 ],
             )
-        elif self.current_filter is None:
+        elif self.current_filter == FilterType.RAW:
             # Add rows from filtered Polars DataFrame
             self.current_table = filtered_table
             new_table.add_rows(
@@ -352,7 +365,7 @@ class VimDataTable(Container):
 
         # Update the filter indicator using enum's __str__ method
         filter_indicator = self.query_one("#filter-indicator", Static)
-        filter_name = str(self.current_filter) if self.current_filter else "None"
+        filter_name = self.current_filter.label
         filter_indicator.update(f"Filter: {filter_name}")
 
         # Log about the filter change
