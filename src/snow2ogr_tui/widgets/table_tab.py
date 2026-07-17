@@ -36,6 +36,10 @@ class DataTableTab(Container):
         """Initialize the DataTableTab."""
         super().__init__(name=name, id=container_id, classes=classes)
 
+    def on_mount(self) -> None:
+        """Run when tab is mounted."""
+        self.can_focus = False
+
     @property
     def sf_connection(self) -> Connection | None:
         """Return the application's current Snowflake connection."""

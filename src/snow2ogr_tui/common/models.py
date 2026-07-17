@@ -75,11 +75,14 @@ class ExportDownloadStatus(StrEnum):
 
     IDLE = auto()
 
+    STARTING = auto()
+
     IN_PROGRESS = auto()
 
     MISSING = auto()
     UNKNOWN = auto()
 
+    FETCHING_METRICS = auto()
     FETCHING_TABLES = auto()
     FETCHING_TERRITORY = auto()
     FETCHING_NAMES = auto()
@@ -107,9 +110,11 @@ class ExportDownloadStatus(StrEnum):
 
 _EXPORT_STATUS_TEXT: dict[ExportDownloadStatus, str] = {
     ExportDownloadStatus.IDLE: "Waiting to start",
+    ExportDownloadStatus.STARTING: "Starting export",
     ExportDownloadStatus.MISSING: "Missing",
     ExportDownloadStatus.UNKNOWN: "Unknown",
     ExportDownloadStatus.IN_PROGRESS: "In progress",
+    ExportDownloadStatus.FETCHING_METRICS: "Fetching table metrics",
     ExportDownloadStatus.FETCHING_TABLES: "Fetching tables",
     ExportDownloadStatus.FETCHING_TERRITORY: "Fetching territory table",
     ExportDownloadStatus.FETCHING_NAMES: "Fetching names",

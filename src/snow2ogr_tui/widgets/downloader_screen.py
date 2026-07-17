@@ -175,7 +175,7 @@ class DownloaderScreen(ModalScreen):
     def on_mount(self) -> None:
         """Post a message to app when a DownloadScreen is opened."""
         self.set_interval(0.2, self._update_progress_bar)
-        self.watch(self.tui_app.export_manager, "export_worker_revisions", self._export_revision_changed, init=False)
+        self.watch(self.tui_app.export_manager, "export_worker_revisions", self._export_revision_changed, init=True)
 
     def _export_revision_changed(self, old_value: dict[str, int]) -> None:
         """Handle changes in export worker revisions for this table set."""

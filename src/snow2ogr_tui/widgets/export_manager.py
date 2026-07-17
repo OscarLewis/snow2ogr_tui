@@ -181,12 +181,14 @@ class ExportManager(Widget):
         if self.tui_app.sf_conn is None:
             msg = "Snowflake Connection is missing."
             raise RuntimeError(msg)
+        self._set_worker_status(worker_id, ExportDownloadStatus.STARTING)
 
         out_file_path = export_path / Path(table_set.Territory_Table).with_suffix(".gpkg")
         logger.debug(f"Exporting {table_set.Group_Key} file to {out_file_path}")
 
         self.schema = "TERRITORY_APP"
         self.database = "MAPS_DATA_SEMANTIC_DB"
+        self._set_worker_status(worker_id, ExportDownloadStatus.FETCHING_METRICS)
 
         # TODO: This call to SnowFlake is causing a hitch in performance
         # where the button to download doesn't go invisible for a second

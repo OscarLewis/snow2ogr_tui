@@ -9,6 +9,7 @@ import polars as pl
 from adbc_driver_manager import DatabaseError, OperationalError, ProgrammingError
 from adbc_driver_snowflake.dbapi import Connection
 from loguru import logger
+from polars.expr.expr import Expr
 from returns.result import Failure, ResultE, Success
 from rich.text import Text
 from textual import work
@@ -21,7 +22,7 @@ from snow2ogr_tui.common import TableSet
 from snow2ogr_tui.common.models import FilterType
 from snow2ogr_tui.pipelines.group_tables import group_territory_tables, preprocess_table_metadata
 from snow2ogr_tui.pipelines.list_tables import list_tables
-from snow2ogr_tui.widgets.data_table import CommandMessage, TableRowSelected
+from snow2ogr_tui.widgets.data_table import CommandMessage, CommandMode, TableRowSelected
 from snow2ogr_tui.widgets.downloader_screen import DownloaderScreen
 
 if TYPE_CHECKING:
@@ -92,6 +93,7 @@ class DataFrameManager(Widget):
         super().__init__(name=name, id=dom_id, classes=classes)
         self.tables_extended = pl.DataFrame()
         self.tables_grouped = pl.DataFrame()
+        self.filter_expression: Expr | None = None
 
     @property
     def tui_app(self) -> "TuiApp":
@@ -119,6 +121,10 @@ class DataFrameManager(Widget):
             raise RuntimeError(msg)
 
         return_df = self.tables_grouped if self.current_filter == FilterType.NDMGEO else self.tables_extended
+
+        if self.search_active and self.filter_expression is not None:
+            logger.debug("Search Filter is active")
+            return_df = return_df.filter(self.filter_expression)
 
         required_columns = {
             "territory_table_primary",
@@ -195,7 +201,24 @@ class DataFrameManager(Widget):
 
     def on_command_message(self, message: CommandMessage) -> None:
         """Handle command messages from the Table UI."""
-        logger.debug(f"Command value changed to: {message.mode} {message.content}")
+        if message.mode == CommandMode.SEARCH:
+            self._handle_search_command(message.content)
+
+    @work(exclusive=True)
+    async def _handle_search_command(self, content: str) -> None:
+        """Handle searches of the DataFrame."""
+        logger.debug(f"Search Command recieved, value is: {content}")
+        search_column = "Group Key" if self.current_filter == FilterType.NDMGEO else "territory_table_primary"
+        if content == "":
+            self.search_active = False
+            self.filter_expression = None
+        elif len(content) > 1:
+            self.search_active = True
+            self.filter_expression = pl.col(search_column).str.to_uppercase().str.contains(
+                content.upper(),
+                literal=True,
+            ) | pl.col(search_column).str.to_uppercase().str.starts_with(content.upper())
+        self.current_table_revision += 1
 
     def _table_set_from_index(self, index: int) -> TableSet:
         """Return the TableSet for the selected table row index."""
@@ -220,8 +243,15 @@ class DataFrameManager(Widget):
         return result
 
     def on_table_search_toggled(self, _message: TableSearchToggled) -> None:
-        """"""
+        """Toggle the state of the table search control."""
         self.search_open = not self.search_open
+
+    def watch_search_open(self, new_value: bool) -> None:  # noqa: FBT001 - I know this is supposed to be a bool
+        """If the search window is closed, reset the table."""
+        if not new_value:
+            self.search_active = False
+            self.filter_expression = None
+            self.current_table_revision += 1
 
     class TableLoadResult(NamedTuple):
         """Result of fetching a list of tables in Snowflake schema."""

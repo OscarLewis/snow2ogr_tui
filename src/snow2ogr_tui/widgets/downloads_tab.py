@@ -46,6 +46,7 @@ class DownloadsTab(Container):
     def on_mount(self) -> None:
         """Check for any downloads that are in progress."""
         self.watch(self.tui_app.export_manager, "export_worker_revisions", self._export_revision_changed, init=False)
+        self.can_focus = False
 
     def compose(self) -> ComposeResult:
         """Compose the tab."""

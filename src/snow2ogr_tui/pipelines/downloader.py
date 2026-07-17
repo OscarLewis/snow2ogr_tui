@@ -380,7 +380,7 @@ def prepare_spatial_table(
             database,
             schema,
             table_name,
-            columns=[name for name, _ in columns if name != geom_res.COLUMN],
+            columns=[name for name, _ in columns if name not in (geom_res.COLUMN, "WKB")],
         )
 
         return (
@@ -814,6 +814,7 @@ def write_geopackage(
         if isinstance(dtype, pl.Decimal)
     ]
 
+    # Drop the WKB (TEXT) column if it survived until this point
     cols_to_drop = [col for col, dtype in gdf.schema.items() if col == "WKB" and dtype == pl.String]
 
     gdf = gdf.drop(cols_to_drop)
@@ -822,7 +823,6 @@ def write_geopackage(
         gdf.with_columns(decimal_casts).rename({geometry_column: "geom"}),
         geometry_name="geom",
     )
-    logger.debug(f"GDF Schema before export: {gdf.schema}")
 
     out_path = Path(out_path)
     if out_path.exists():

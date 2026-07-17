@@ -97,9 +97,9 @@ class TuiApp(App):
 
     BINDINGS: ClassVar[list[Binding]] = [
         # Global bindings - tab-specific bindings are defined in each tab class
-        Binding("f", "toggle_table_filter", "Toggle Filter"),
-        Binding("d", "toggle_dark", "Toggle Dark Mode"),
-        Binding("/", "toggle_table_search", "Toggle Search"),
+        Binding("f", "toggle_table_filter", "Filter"),
+        Binding("d", "toggle_dark", "Dark Mode"),
+        Binding("/", "toggle_table_search", "Search"),
         Binding("i", "toggle_login", "Login", show=False),
         Binding("ctrl+q", "quit", "Quit"),
         Binding("question_mark", "toggle_help", "Help"),

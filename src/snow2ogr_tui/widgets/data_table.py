@@ -125,7 +125,14 @@ class VimDataTable(Container):
         height: 1fr;
     }
 
-    #loading-indicator {
+    VimDataTable #no-results {
+        height: 1fr;
+        width: auto;
+        padding: 2 1 1 1;
+        color: $warning;
+    }
+
+    VimDataTable #loading-indicator {
         width: 100%;
         height: 1;
     }
@@ -268,7 +275,16 @@ class VimDataTable(Container):
         loading_overlay.display = False
         # Unmount the old table
         old_table = self.query_one(VimStyleTable)
+        no_results = self.query_one("#no-results", Static)
+
+        if self.tui_app.df_manager.current_dataframe_display.height == 0:
+            old_table.display = False
+            no_results.display = True
+            return
+
         old_table.remove()
+        no_results.display = False
+
         new_table = VimStyleTable(
             data=self.tui_app.df_manager.current_dataframe_display,
             cursor_type=self.cursor_type,
@@ -289,7 +305,7 @@ class VimDataTable(Container):
             ),
         )
         self.mount(new_table)
-        self.call_after_refresh(new_table.focus)
+        new_table.display = True
 
     def compose(self) -> ComposeResult:
         """Create the layout with data table and loading indicator."""
@@ -307,6 +323,7 @@ class VimDataTable(Container):
             yield CommandPrompt(id="table-cmd-prompt")
             yield CommandLine(id="table-cmd-input")
         yield VimStyleTable(cursor_type=self.cursor_type, classes="data-table")
+        yield Static(Text("No matching tables found.", "bold"), id="no-results")
         with Container(id="loading-overlay"), Middle(), Center(), Vertical(id="loading-overlay-content"):
             yield Static("Fetching Snowflake tables...", id="loading-text")
             yield LoadingIndicator(id="loading-indicator")
