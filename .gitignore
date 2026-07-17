@@ -15,3 +15,5 @@ wheels/
 .DS_STORE
 
 logs/
+
+tables_grouped.parquet

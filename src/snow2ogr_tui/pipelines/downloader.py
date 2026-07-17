@@ -258,36 +258,26 @@ def build_names_array(names_table: pl.DataFrame) -> pl.DataFrame:
 
 def build_ndm_df(
     df: pl.DataFrame,
-    json_cols=(
-        "FEATURE_PROTO",
-        "METADATA",
-        "APPLE_EDITS",
-    ),
-    exclude_cols=(
-        "FEATURE_PROTO",
-        "METADATA",
-        "APPLE_EDITS",
-        "REPRESENTATIVE_POINT",
-        "ISO_COUNTRY_CODE",
-        "FEATURE_TYPE",
-        "VENDOR_ID",
-    ),
+    exclude_cols: set[str] | None = None,
 ) -> pl.DataFrame:
+    if not exclude_cols:
+        exclude_cols = {
+            "FEATURE_PROTO",
+            "METADATA",
+            "APPLE_EDITS",
+            "REPRESENTATIVE_POINT",
+            "ISO_COUNTRY_CODE",
+            "FEATURE_TYPE",
+            "VENDOR_ID",
+        }
     return df.select(
-        "FEATURE_ID",
-        *json_cols,
-    ).join(
-        df.select(
-            pl.exclude(*exclude_cols),
-        ).rename(
-            {
-                "LENGTH": "LENGTH_NDM",
-                "AREA": "AREA_NDM",
-                "PERIMETER": "PERIMETER_NDM",
-            },
-        ),
-        on="FEATURE_ID",
-        how="left",
+        pl.exclude(exclude_cols),
+    ).rename(
+        {
+            "LENGTH": "LENGTH_NDM",
+            "AREA": "AREA_NDM",
+            "PERIMETER": "PERIMETER_NDM",
+        },
     )
 
 
@@ -814,9 +804,8 @@ def write_geopackage(
     - Overwrites any existing output file.
     """
     if geometry_column.lower() not in (name.lower() for name in gdf.schema.names()):
-        raise ValueError(f"Geometry column '{geometry_column}' not found.")
-
-    srids = gdf.select(st.geom(geometry_column).st.srid().alias("srid"))
+        msg = f"Geometry column '{geometry_column}' not found."
+        raise ValueError(msg)
 
     # File writing engine cannot handle Decimal columns with precision > 19.
     decimal_casts = [
@@ -825,10 +814,15 @@ def write_geopackage(
         if isinstance(dtype, pl.Decimal)
     ]
 
+    cols_to_drop = [col for col, dtype in gdf.schema.items() if col == "WKB" and dtype == pl.String]
+
+    gdf = gdf.drop(cols_to_drop)
+
     gdf = st.GeoDataFrame(
         gdf.with_columns(decimal_casts).rename({geometry_column: "geom"}),
         geometry_name="geom",
     )
+    logger.debug(f"GDF Schema before export: {gdf.schema}")
 
     out_path = Path(out_path)
     if out_path.exists():

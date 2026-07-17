@@ -2,6 +2,7 @@
 
 import asyncio
 from datetime import datetime
+from pathlib import Path
 from typing import TYPE_CHECKING, NamedTuple, cast
 
 import polars as pl
@@ -20,7 +21,7 @@ from snow2ogr_tui.common import TableSet
 from snow2ogr_tui.common.models import FilterType
 from snow2ogr_tui.pipelines.group_tables import group_territory_tables, preprocess_table_metadata
 from snow2ogr_tui.pipelines.list_tables import list_tables
-from snow2ogr_tui.widgets.data_table import TableRowSelected
+from snow2ogr_tui.widgets.data_table import CommandMessage, TableRowSelected
 from snow2ogr_tui.widgets.downloader_screen import DownloaderScreen
 
 if TYPE_CHECKING:
@@ -70,11 +71,21 @@ class DataFrameManager(Widget):
     }
     """
 
-    # Was the initial table load from Snowflake completed successfully?
-    table_loaded: reactive[bool] = reactive(False)  # noqa: FBT003 - I am intentionally setting this to default to False
-    current_table_revision: reactive[int] = reactive(0)  # Track any changes to the dataframe
-    current_filter: reactive[FilterType] = reactive(FilterType.NDMGEO)  # Track current filter state
-    search_open: reactive[bool] = reactive(False)  # noqa: FBT003 - I am intentionally setting this to default to False
+    table_loaded: reactive[bool] = reactive(
+        default=False,  # Track if tables have been loaded form SnowFlake
+    )
+    current_table_revision: reactive[int] = reactive(
+        default=0,  # Track any changes to the dataframe
+    )
+    current_filter: reactive[FilterType] = reactive(
+        default=FilterType.NDMGEO,  # Track current filter state
+    )
+    search_open: reactive[bool] = reactive(
+        default=False,  # Track if the 'table command prompt' is open
+    )
+    search_active: reactive[bool] = reactive(
+        default=False,  # Track if there is a current search to apply on the DataFrames
+    )
 
     def __init__(self, name: str | None = None, dom_id: str | None = None, classes: str | None = None) -> None:
         """Create a new dataframe manager instance."""
@@ -182,6 +193,10 @@ class DataFrameManager(Widget):
             ),
         )
 
+    def on_command_message(self, message: CommandMessage) -> None:
+        """Handle command messages from the Table UI."""
+        logger.debug(f"Command value changed to: {message.mode} {message.content}")
+
     def _table_set_from_index(self, index: int) -> TableSet:
         """Return the TableSet for the selected table row index."""
         row = self.current_dataframe.row(index, named=True)
@@ -261,6 +276,7 @@ class DataFrameManager(Widget):
             self.table_loaded = True
             logger.debug(f"tables_extended columns: {self.tables_extended.columns}")
             logger.debug(f"tables_grouped columns: {self.tables_grouped.columns}")
+
             # Post message that data has been loaded
             self.post_message(SnowflakeTablesinSchemaLoaded())
             logger.info(

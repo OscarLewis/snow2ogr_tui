@@ -1,6 +1,7 @@
 """Fast data table widget for the Snow2OGR with VIM keybinds for navigation."""
 
 from enum import StrEnum, auto
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Literal, cast
 
 from loguru import logger
@@ -53,7 +54,11 @@ class CommandPrompt(Static):
 
     def render(self) -> Text:
         """Render the mode-specific prefix for the command input."""
-        return Text("/", "bold") if self.mode is CommandMode.SEARCH else Text(":", "bold")
+        match self.mode:
+            case CommandMode.SEARCH:
+                return Text("/", "bold")
+            case CommandMode.COMMAND:
+                return Text(":", "bold")
 
 
 class CommandLine(Input):
@@ -76,6 +81,17 @@ class CommandLine(Input):
         self.app.query_one("#table-cmd-prompt").display = False
         self.tui_app.df_manager.search_open = False
         self.app.query_one(VimStyleTable).focus()
+
+
+class CommandMessage(Message):
+    """Posted when a table command should be sent to the DataFrame Manager."""
+
+    def __init__(self, mode: CommandMode, content: str) -> None:
+        """Initialize the message/event with the indes of the selection."""
+        super().__init__()
+
+        self.mode = mode
+        self.content = content
 
 
 class VimDataTable(Container):
@@ -212,6 +228,9 @@ class VimDataTable(Container):
     def _handle_table_loaded_change(self) -> None:
         """Handle updating the table when the DataFrame Manager loads the tables from SnowFlake."""
         logger.debug("Detected that tables are now loaded")
+        grouped_parq_out = Path("tables_grouped.parquet")
+        grouped_parq_out.unlink(missing_ok=True)
+        self.tui_app.df_manager.current_dataframe.write_parquet(grouped_parq_out)
         self._refresh_table_view()
 
     def _handle_search_open_close(self) -> None:
@@ -241,7 +260,7 @@ class VimDataTable(Container):
         mode = self.query_one("#table-cmd-prompt", CommandPrompt).mode
 
         if event.input.id == "table-cmd-input":
-            logger.debug(f"Command value changed to: {mode} {event.value}")
+            self.tui_app.df_manager.post_message(CommandMessage(mode, event.value))
 
     def _refresh_table_view(self) -> None:
         """Refresh the displayed table when new data is available."""
