@@ -9,7 +9,7 @@ from textual.binding import Binding
 from textual.containers import Container
 from textual.widgets import Footer
 
-from snow2ogr_tui.widgets.data_table import FilterToggled, VimDataTable
+from snow2ogr_tui.widgets.data_table import VimDataTable
 
 if TYPE_CHECKING:
     from snow2ogr_tui.main import TuiApp

@@ -1,5 +1,6 @@
 """Main function for creating a TUI App."""
 
+# ruff: noqa: ERA001 - I know there's commented out code right now
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar
 
@@ -11,12 +12,17 @@ from textual.widgets import TabbedContent, TabPane
 
 from snow2ogr_tui.database import init_db
 from snow2ogr_tui.widgets import AppHeader, DataTableTab, DownloadsTab, VimDataTable
-from snow2ogr_tui.widgets.data_table import FilterToggled, TablesLoaded
 from snow2ogr_tui.widgets.downloader_screen import DownloadButtonPressed
 from snow2ogr_tui.widgets.export_manager import ExportManager
 from snow2ogr_tui.widgets.help_screen import HelpScreen
 from snow2ogr_tui.widgets.ml_manager import MLManager
 from snow2ogr_tui.widgets.sf_login import SFLoginScreen, SnowflakeConnected
+from snow2ogr_tui.widgets.table_manager import (
+    DataFrameManager,
+    FilterToggled,
+    SnowflakeTablesinSchemaLoaded,
+    TableSearchToggled,
+)
 
 if TYPE_CHECKING:
     from adbc_driver_snowflake.dbapi import Connection
@@ -24,7 +30,8 @@ if TYPE_CHECKING:
 # Remove loguru's default stderr sink (avoids fighting with Textual's terminal control)
 logger.remove()
 
-log_dir = Path(user_log_dir("snow2ogr_tui", "oscarlewis"))
+# log_dir = Path(user_log_dir("snow2ogr_tui", "oscarlewis"))
+log_dir = Path("logs")
 
 log_dir.mkdir(parents=True, exist_ok=True)
 
@@ -86,11 +93,13 @@ class TuiApp(App):
         self.sf_conn: Connection | None = None
         self.export_manager: ExportManager = ExportManager(dom_id="export-manager")
         self.ml_manager: MLManager = MLManager(dom_id="ml-manager")
+        self.df_manager: DataFrameManager = DataFrameManager(dom_id="df_manager")
 
     BINDINGS: ClassVar[list[Binding]] = [
         # Global bindings - tab-specific bindings are defined in each tab class
         Binding("f", "toggle_table_filter", "Toggle Filter"),
         Binding("d", "toggle_dark", "Toggle Dark Mode"),
+        Binding("/", "toggle_table_search", "Toggle Search"),
         Binding("i", "toggle_login", "Login", show=False),
         Binding("ctrl+q", "quit", "Quit"),
         Binding("question_mark", "toggle_help", "Help"),
@@ -101,6 +110,7 @@ class TuiApp(App):
         # First thing is to add the invisible ExportManager that lives in the background of all things
         yield self.export_manager
         yield self.ml_manager
+        yield self.df_manager
         yield AppHeader("snow2ogr")
         with TabbedContent(id="main-tabs"):
             with TabPane("Snowflake Tables", id="data-table-tab"):
@@ -114,19 +124,23 @@ class TuiApp(App):
         # This SFLoginScreen starts logging into Snowflake on mount and will reply with a SnowflakeConnected message.
         self.push_screen(SFLoginScreen())
 
-    def on_tables_loaded(self, message: TablesLoaded) -> None:
+    def on_tables_loaded(self, message: SnowflakeTablesinSchemaLoaded) -> None:
         """Handle when tables are loaded."""
-        logger.info(f"Tables loaded: {len(message.table_data)} tables")
 
     def on_snowflake_connected(self, message: SnowflakeConnected) -> None:
         """Store the Snowflake connection and fetch data once loaded."""
         self.sf_conn = message.connection
         logger.info("Connection to Snowflake established.")
-        self.query_one(DataTableTab).query_one(VimDataTable).fetch_data()
+        # self.query_one(DataTableTab).query_one(VimDataTable).fetch_data()
+        self.df_manager.fetch_data()
 
     def action_toggle_login(self) -> None:
         """Toggle login screen."""
         self.push_screen(SFLoginScreen())
+
+    def action_toggle_table_search(self) -> None:
+        """Toggle table search."""
+        self.df_manager.post_message(TableSearchToggled())
 
     def action_toggle_dark(self) -> None:
         """Toggle dark mode."""
@@ -152,12 +166,13 @@ class TuiApp(App):
 
         # Send the FilterToggled message to it
         vim_data_table.post_message(FilterToggled())
+        self.df_manager.post_message(FilterToggled())
 
 
 def main() -> None:
     """Run Application."""
     app = TuiApp()
-    logger.debug("Starting Snow2OGR TUI Application.")
+    logger.info("Starting Snow2OGR TUI Application.")
     app.run()
 
 

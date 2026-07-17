@@ -1,6 +1,5 @@
 """Downloader Screen Widget."""
 
-import re
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, ClassVar, cast
 
@@ -36,9 +35,6 @@ class DownloaderScreen(ModalScreen):
 
     BINDINGS: ClassVar[list[Binding]] = [
         Binding("escape", "close"),
-        Binding("d", "toggle_dark", "Toggle Dark Mode"),
-        Binding("ctrl+q", "quit", "Quit"),
-        Binding("f", "toggle_table_filter", "Toggle Filter"),
     ]
 
     DEFAULT_CSS = """
@@ -98,18 +94,39 @@ class DownloaderScreen(ModalScreen):
     }
     """
 
-    def __init__(self, group_key: str, table_set: TableSet) -> None:
+    def __init__(self, table_set: TableSet) -> None:
         """Initialize the downloader screen."""
         super().__init__()
+
         self.group_key_export_status: ExportDownloadStatus = ExportDownloadStatus.UNKNOWN
-        self.Territory_Table = table_set.Territory_Table
-        self.Geometry_Table = table_set.Geometry_Table
-        self.NDM_Table = table_set.NDM_Table
-        self.Names_Table = table_set.Name_Table
         self.table_set = table_set
-        self.group_key = group_key
         self._progress_timer = self.set_interval(0.2, self._update_progress_bar)
         self._progress: ExportProgress | None = None
+
+    @property
+    def group_key(self) -> str:
+        """Return the export group key for this table set."""
+        return self.table_set.Group_Key
+
+    @property
+    def territory_table(self) -> str:
+        """Return the territory table name for this export."""
+        return self.table_set.Territory_Table
+
+    @property
+    def geometry_table(self) -> str | None:
+        """Return the geometry table name for this export."""
+        return self.table_set.Geometry_Table
+
+    @property
+    def ndm_table(self) -> str | None:
+        """Return the NDM source table name if configured."""
+        return self.table_set.NDM_Table
+
+    @property
+    def names_table(self) -> str | None:
+        """Return the name source table name if configured."""
+        return self.table_set.Name_Table
 
     @property
     def tui_app(self) -> "TuiApp":
@@ -126,13 +143,13 @@ class DownloaderScreen(ModalScreen):
             yield Static("Export Tables", id="title")
 
             yield Static("Selected Table Set", classes="heading")
-            yield Static(f"{self.Territory_Table}", id="selected-table")
-            if self.Geometry_Table:
-                yield Static(f"[bold]Geometry Table[/bold]: {self.Geometry_Table}", markup=True)
-            if self.NDM_Table:
-                yield Static(f"[bold]NDM Source Tables[/bold]: {self.NDM_Table}", markup=True)
-            if self.Names_Table:
-                yield Static(f"[bold]Name Source Tables[/bold]: {self.Names_Table}", markup=True)
+            yield Static(f"{self.territory_table}", id="selected-table")
+            if self.geometry_table:
+                yield Static(f"[bold]Geometry Table[/bold]: {self.geometry_table}", markup=True)
+            if self.ndm_table:
+                yield Static(f"[bold]NDM Source Tables[/bold]: {self.ndm_table}", markup=True)
+            if self.names_table:
+                yield Static(f"[bold]Name Source Tables[/bold]: {self.names_table}", markup=True)
 
             yield Static("Status", classes="heading")
             yield Static("Waiting to start...", id="current-step")
@@ -181,18 +198,6 @@ class DownloaderScreen(ModalScreen):
     def action_close(self) -> None:
         """Close the downloader screen."""
         self.dismiss()
-
-    def action_toggle_dark(self) -> None:
-        """Toggle the application's dark mode."""
-        self.app.action_toggle_dark()
-
-    async def action_toggle_table_filter(self) -> None:
-        """Toggle the table filter in the parent application."""
-        await self.app.run_action("toggle_table_filter")
-
-    async def action_quit(self) -> None:
-        """Quit the application."""
-        await self.app.action_quit()
 
     def on_click(self, event: Click) -> None:
         """Dismiss the modal when the background is clicked."""

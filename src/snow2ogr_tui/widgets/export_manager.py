@@ -8,7 +8,6 @@ from typing import TYPE_CHECKING, cast
 from loguru import logger
 from platformdirs import user_downloads_path
 from sqlalchemy.orm import Session, sessionmaker
-from textual import work
 from textual.message import Message
 from textual.reactive import reactive
 from textual.widget import Widget

@@ -7,6 +7,18 @@ from pathlib import Path
 from typing import Any, NamedTuple
 
 
+class FilterType(StrEnum):
+    """Filter types for table filtering."""
+
+    NDMGEO = "ndmgeo"
+    RAW = "raw"
+
+    @property
+    def label(self) -> str:
+        """Return the display label for the filter type."""
+        return "NDM/GEO" if self is FilterType.NDMGEO else self.value.upper()
+
+
 class PackagedModel(NamedTuple):
     """Represents a packaged query duration model registry record."""
 
@@ -51,8 +63,8 @@ class GeospatialOutputFormat(StrEnum):
 class TableSet:
     """Data class for storing table references."""
 
-    Group_Key: str | None = None
-    Territory_Table: str | None = None
+    Group_Key: str
+    Territory_Table: str
     Geometry_Table: str | None = None
     NDM_Table: str | None = None
     Name_Table: str | None = None

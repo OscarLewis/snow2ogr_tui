@@ -13,3 +13,5 @@ wheels/
 *.csv
 
 .DS_STORE
+
+logs/
