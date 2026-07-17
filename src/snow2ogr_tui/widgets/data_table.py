@@ -1,5 +1,6 @@
 """Fast data table widget for the Snow2OGR with VIM keybinds for navigation."""
 
+from enum import StrEnum, auto
 from typing import TYPE_CHECKING, Any, ClassVar, Literal, cast
 
 from loguru import logger
@@ -38,6 +39,23 @@ class VimStyleTable(DataTable):
     ]
 
 
+class CommandMode(StrEnum):
+    """Enumeration of supported command-line modes for the table."""
+
+    COMMAND = auto()
+    SEARCH = auto()
+
+
+class CommandPrompt(Static):
+    """Prompt displayed before the command line."""
+
+    mode = reactive(CommandMode.COMMAND)
+
+    def render(self) -> Text:
+        """Render the mode-specific prefix for the command input."""
+        return Text("/", "bold") if self.mode is CommandMode.SEARCH else Text(":", "bold")
+
+
 class CommandLine(Input):
     """Command line input for table command mode."""
 
@@ -54,6 +72,7 @@ class CommandLine(Input):
         """Handle when escape is pressed when CommandLine is focused for user input."""
         self.value = ""
         self.display = False
+        self.app.query_one("#table-cmd-prompt", CommandPrompt).mode = CommandMode.COMMAND
         self.app.query_one("#table-cmd-prompt").display = False
         self.tui_app.df_manager.search_open = False
         self.app.query_one(VimStyleTable).focus()
@@ -122,6 +141,7 @@ class VimDataTable(Container):
     VimDataTable #table-cmd-container {
         dock: bottom;
         height: 1;
+        padding: 0 2 0 1;
         background: $background;
     }
 
@@ -175,9 +195,8 @@ class VimDataTable(Container):
         self.watch(self.tui_app.df_manager, "search_open", self._handle_search_open_close, init=False)
 
         # Hide the table command line
-        self.query_one("#table-cmd-prompt", Static).display = False
+        self.query_one("#table-cmd-prompt", CommandPrompt).display = False
         self.query_one("#table-cmd-input", CommandLine).display = False
-        # TODO: Show the command line on '/' input for search
 
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
         """Handle table selection."""
@@ -202,17 +221,27 @@ class VimDataTable(Container):
         displayed and the input is focused. When False they are hidden and the
         input is blurred.
         """
-        prompt = self.query_one("#table-cmd-prompt", Static)
+        prompt = self.query_one("#table-cmd-prompt", CommandPrompt)
         input_dom = self.query_one("#table-cmd-input", CommandLine)
         if self.tui_app.df_manager.search_open:
+            prompt.mode = CommandMode.SEARCH
             input_dom.display = True
             prompt.display = True
             prompt.update(Text("/", style="bold"))
             self.call_after_refresh(input_dom.focus)
         if not self.tui_app.df_manager.search_open:
+            prompt.mode = CommandMode.COMMAND
+            input_dom.value = ""
             input_dom.blur()
             input_dom.display = False
             prompt.display = False
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        """Handle changes to the table command input."""
+        mode = self.query_one("#table-cmd-prompt", CommandPrompt).mode
+
+        if event.input.id == "table-cmd-input":
+            logger.debug(f"Command value changed to: {mode} {event.value}")
 
     def _refresh_table_view(self) -> None:
         """Refresh the displayed table when new data is available."""
@@ -256,7 +285,7 @@ class VimDataTable(Container):
             )
             yield Static("Number of tables in filter: 0", id="record-count")
         with Horizontal(id="table-cmd-container"):
-            yield Static(Text(":", "bold"), id="table-cmd-prompt")
+            yield CommandPrompt(id="table-cmd-prompt")
             yield CommandLine(id="table-cmd-input")
         yield VimStyleTable(cursor_type=self.cursor_type, classes="data-table")
         with Container(id="loading-overlay"), Middle(), Center(), Vertical(id="loading-overlay-content"):

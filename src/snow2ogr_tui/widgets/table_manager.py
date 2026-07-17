@@ -20,8 +20,7 @@ from snow2ogr_tui.common import TableSet
 from snow2ogr_tui.common.models import FilterType
 from snow2ogr_tui.pipelines.group_tables import group_territory_tables, preprocess_table_metadata
 from snow2ogr_tui.pipelines.list_tables import list_tables
-from snow2ogr_tui.widgets import VimDataTable
-from snow2ogr_tui.widgets.data_table import CommandLine, TableRowSelected
+from snow2ogr_tui.widgets.data_table import TableRowSelected
 from snow2ogr_tui.widgets.downloader_screen import DownloaderScreen
 
 if TYPE_CHECKING:
