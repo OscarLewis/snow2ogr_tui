@@ -87,6 +87,7 @@ class DataFrameManager(Widget):
     search_active: reactive[bool] = reactive(
         default=False,  # Track if there is a current search to apply on the DataFrames
     )
+    focus_table_after_refresh = reactive(default=False)
 
     def __init__(self, name: str | None = None, dom_id: str | None = None, classes: str | None = None) -> None:
         """Create a new dataframe manager instance."""
@@ -177,7 +178,9 @@ class DataFrameManager(Widget):
             self.current_filter = FilterType.RAW
         logger.debug(f"There are {len(self.current_dataframe_display):,} records found in the current filter")
         # Update table revesion after filter changes
-        self.current_table_revision += 1
+        if self.table_loaded:
+            self.focus_table_after_refresh = True
+            self.current_table_revision += 1
 
     def on_mount(self) -> None:
         """Once application is loaded, initialize the DataFrame manager."""
@@ -185,6 +188,7 @@ class DataFrameManager(Widget):
     def fetch_data(self) -> None:
         """Fetch Snowflake table metadata asynchronously."""
         self._worker_load_data()
+        self.focus_table_after_refresh = True
 
     def on_table_row_selected(self, message: TableRowSelected) -> None:
         """Handle selection of a table row and log the selected row."""
@@ -201,6 +205,8 @@ class DataFrameManager(Widget):
 
     def on_command_message(self, message: CommandMessage) -> None:
         """Handle command messages from the Table UI."""
+        if not self.table_loaded:
+            return
         if message.mode == CommandMode.SEARCH:
             self._handle_search_command(message.content)
 
@@ -218,7 +224,9 @@ class DataFrameManager(Widget):
                 content.upper(),
                 literal=True,
             ) | pl.col(search_column).str.to_uppercase().str.starts_with(content.upper())
-        self.current_table_revision += 1
+        if self.table_loaded:
+            self.focus_table_after_refresh = False
+            self.current_table_revision += 1
 
     def _table_set_from_index(self, index: int) -> TableSet:
         """Return the TableSet for the selected table row index."""
@@ -251,7 +259,9 @@ class DataFrameManager(Widget):
         if not new_value:
             self.search_active = False
             self.filter_expression = None
-            self.current_table_revision += 1
+            if self.table_loaded:
+                self.focus_table_after_refresh = True
+                self.current_table_revision += 1
 
     class TableLoadResult(NamedTuple):
         """Result of fetching a list of tables in Snowflake schema."""

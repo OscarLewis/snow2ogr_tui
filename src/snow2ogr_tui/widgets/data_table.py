@@ -37,7 +37,19 @@ class VimStyleTable(DataTable):
         Binding("k", "cursor_up", "Cursor up", show=False),
         Binding("h", "cursor_left", "Cursor left", show=False),
         Binding("l", "cursor_right", "Cursor right", show=False),
+        Binding("g", "cursor_top", "Top", show=False),
+        Binding("G", "cursor_bottom", "Bottom", show=False),
     ]
+
+    def action_cursor_top(self) -> None:
+        """Move the cursor to the first row."""
+        if self.row_count:
+            self.move_cursor(row=0)
+
+    def action_cursor_bottom(self) -> None:
+        """Move the cursor to the last row."""
+        if self.row_count:
+            self.move_cursor(row=self.row_count - 1)
 
 
 class CommandMode(StrEnum):
@@ -80,7 +92,6 @@ class CommandLine(Input):
         self.app.query_one("#table-cmd-prompt", CommandPrompt).mode = CommandMode.COMMAND
         self.app.query_one("#table-cmd-prompt").display = False
         self.tui_app.df_manager.search_open = False
-        self.app.query_one(VimStyleTable).focus()
 
 
 class CommandMessage(Message):
@@ -122,6 +133,7 @@ class VimDataTable(Container):
 
     VimDataTable .data-table {
         layer: base;
+        margin-bottom: 1;
         height: 1fr;
     }
 
@@ -306,6 +318,10 @@ class VimDataTable(Container):
         )
         self.mount(new_table)
         new_table.display = True
+
+        if self.tui_app.df_manager.focus_table_after_refresh:
+            self.call_after_refresh(new_table.focus)
+            self.tui_app.df_manager.focus_table_after_refresh = False
 
     def compose(self) -> ComposeResult:
         """Create the layout with data table and loading indicator."""
